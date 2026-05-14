@@ -2,6 +2,7 @@
 // API PRIVADA: Lógica de base de datos e integración con IA
 const express = require('express');
 const Database = require('better-sqlite3');
+const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
@@ -29,12 +30,15 @@ db.pragma('foreign_keys = ON');
 // UTILIDADES
 // ============================================================================
 
-// Función para hashear contraseñas
-function hashPassword(password) {
-    return crypto
-        .createHash('sha256')
-        .update(password)
-        .digest('hex');
+// Función para hashear contraseñas con bcrypt
+async function hashPassword(password) {
+    const saltRounds = 10;
+    return await bcrypt.hash(password, saltRounds);
+}
+
+// Función para comparar contraseñas
+async function comparePassword(password, hashedPassword) {
+    return await bcrypt.compare(password, hashedPassword);
 }
 
 // Generar ID único
@@ -52,7 +56,7 @@ function isValidEmail(email) {
 // RUTAS - REGISTRO DE USUARIOS
 // ============================================================================
 
-app.post('/auth/register', (req, res) => {
+app.post('/auth/register', async (req, res) => {
     try {
         const { usuario, correo, contrasena } = req.body;
 
@@ -88,20 +92,32 @@ app.post('/auth/register', (req, res) => {
             });
         }
 
+        // Verificar si el correo ya existe
+        const correoExistente = db.prepare(
+            'SELECT id FROM Usuario WHERE Correo = ?'
+        ).get(correo);
+
+        if (correoExistente) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'El correo electrónico ya está registrado' 
+            });
+        }
+
         // Verificar si el usuario ya existe
         const usuarioExistente = db.prepare(
-            'SELECT id FROM Usuario WHERE NombreUsuario = ? OR Correo = ?'
-        ).get(usuario, correo);
+            'SELECT id FROM Usuario WHERE NombreUsuario = ?'
+        ).get(usuario);
 
         if (usuarioExistente) {
             return res.status(400).json({ 
                 success: false, 
-                error: 'El usuario o correo ya está registrado' 
+                error: 'El nombre de usuario ya está en uso' 
             });
         }
 
-        // Hash de contraseña
-        const hash = hashPassword(contrasena);
+        // Hash de contraseña con bcrypt
+        const hash = await hashPassword(contrasena);
 
         // Generar ID único
         const id = generateId();
@@ -133,7 +149,7 @@ app.post('/auth/register', (req, res) => {
 // RUTAS - LOGIN DE USUARIOS
 // ============================================================================
 
-app.post('/auth/login', (req, res) => {
+app.post('/auth/login', async (req, res) => {
     try {
         const { usuario, contrasena } = req.body;
 
@@ -144,7 +160,7 @@ app.post('/auth/login', (req, res) => {
             });
         }
 
-        // Buscar usuario
+        // Buscar usuario por nombre de usuario
         const user = db.prepare(
             'SELECT id, NombreUsuario, Password FROM Usuario WHERE NombreUsuario = ?'
         ).get(usuario);
@@ -156,9 +172,9 @@ app.post('/auth/login', (req, res) => {
             });
         }
 
-        // Verificar contraseña
-        const hash = hashPassword(contrasena);
-        if (user.Password !== hash) {
+        // Verificar contraseña con bcrypt
+        const passwordMatch = await comparePassword(contrasena, user.Password);
+        if (!passwordMatch) {
             return res.status(401).json({ 
                 success: false, 
                 error: 'Usuario o contraseña incorrectos' 

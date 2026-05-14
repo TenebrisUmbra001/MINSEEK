@@ -2,7 +2,7 @@
 // API PÚBLICA: Gateway con Rate Limiting
 const express = require('express');
 const path = require('path');
-const rateLimit = require('express-rate-limit');
+const rateLimit = require('./node_modules/express-rate-limit/dist/index.d.cts');
 
 const app = express();
 const PORT = 2054;

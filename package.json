@@ -1,7 +1,8 @@
 {
   "dependencies": {
+    "bcrypt": "^5.1.1",
     "better-sqlite3": "^12.10.0",
     "express": "^5.2.1",
-    "express-rate-limit": "^7.5.1"
+    "express-rate-limit": "^7.1.5"
   }
 }
