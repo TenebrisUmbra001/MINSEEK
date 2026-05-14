@@ -173,3 +173,102 @@ function ValidarCodigo() {
         }
     }
 }
+
+/* ============================================================================
+   REGISTRO COMPLETO - Enviar datos a la API
+============================================================================ */
+
+async function RegistroCuenta() {
+    const usuario = document.getElementById("Usuario")?.value.trim();
+    const correo = document.getElementById("Correo")?.value.trim();
+    const contraseña = document.getElementById("Contraseña")?.value;
+    const confirmar = document.getElementById("ConfirmarContraseña")?.value;
+
+    // Validar que los campos existan
+    if (!usuario || !correo || !contraseña) {
+        console.error("Campos del formulario no encontrados");
+        alert("Error: Formulario incompleto");
+        return;
+    }
+
+    // Validar campos no vacíos
+    if (usuario === "" || correo === "" || contraseña === "" || confirmar === "") {
+        alert("Por favor, complete todos los campos.");
+        return false;
+    }
+
+    // Validar dominio del correo
+    const dominioCorrecto = "mail.das.pdr";
+    const partes = correo.split("@");
+    
+    if (partes.length !== 2) {
+        alert("El formato del correo es incorrecto. Debe contener exactamente un '@'.");
+        return false;
+    }
+
+    const dominioIngresado = partes[1];
+    if (dominioIngresado !== dominioCorrecto) {
+        alert("El correo debe terminar en @" + dominioCorrecto);
+        return false;
+    }
+
+    // Validar que coincidan contraseñas
+    if (contraseña !== confirmar) {
+        alert("Las contraseñas no coinciden. Por favor, verifique.");
+        return false;
+    }
+
+    // Validar longitud de contraseña
+    if (contraseña.length < 6) {
+        alert("La contraseña debe tener al menos 6 caracteres");
+        return false;
+    }
+
+    // Mostrar loader
+    const btnRegistrar = document.querySelector('.btn-register');
+    const spanTexto = btnRegistrar.querySelector('span');
+    const textoOriginal = spanTexto.textContent;
+    
+    btnRegistrar.disabled = true;
+    spanTexto.textContent = 'Registrando...';
+
+    try {
+        // Enviar solicitud a la API pública
+        const response = await fetch('/api/registro', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                usuario: usuario,
+                correo: correo,
+                contrasena: contraseña
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert('✅ ' + data.message + '\n\nAhora inicia sesión con tus credenciales.');
+            // Limpiar formulario
+            document.getElementById("Usuario").value = '';
+            document.getElementById("Correo").value = '';
+            document.getElementById("Contraseña").value = '';
+            document.getElementById("ConfirmarContraseña").value = '';
+            
+            // Redirigir a login después de 2 segundos
+            setTimeout(() => {
+                window.location.href = '../InicioSesion/index.html';
+            }, 2000);
+        } else {
+            alert('❌ Error: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error en registro:', error);
+        alert('❌ Error al conectar con el servidor. Intenta más tarde.');
+    } finally {
+        // Restaurar estado del botón
+        btnRegistrar.disabled = false;
+        spanTexto.textContent = textoOriginal;
+    }
+}
