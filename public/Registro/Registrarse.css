@@ -1,0 +1,217 @@
+/* ══════════════════════════════════════════
+   Registrarse.css — Registro de Cuenta
+   Estilo coherente con la pantalla de Login
+   ══════════════════════════════════════════ */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+    background: #041a0a;
+    background: linear-gradient(160deg, #020e02 0%, #052a05 30%, #073d1a 50%, #0a1f4a 75%, #030b2e 100%);
+    min-height: 100vh;
+    width: 100vw;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    overflow-x: hidden;
+    position: relative;
+}
+
+/* ── Fondo decorativo sutil ── */
+.bg-glow {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    pointer-events: none;
+    z-index: -1;
+}
+
+.bg-glow.g1 { width: 420px; height: 420px; background: rgba(10, 80, 40, 0.15); top: -120px; right: -100px; }
+.bg-glow.g2 { width: 360px; height: 360px; background: rgba(10, 30, 100, 0.15); bottom: -90px; left: -90px; }
+.bg-glow.g3 { width: 200px; height: 200px; background: rgba(46, 204, 113, 0.06); top: 50%; left: 50%; transform: translate(-50%, -50%); }
+
+/* ── Tarjeta principal ── */
+section {
+    width: 100%;
+    max-width: 420px;
+    background: #091e15;
+    background: linear-gradient(165deg, rgba(10, 40, 80, 0.85), rgba(5, 30, 15, 0.9));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    padding: 40px 36px 36px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4), 0 0 80px rgba(46, 204, 113, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    margin: 20px;
+    animation: cardIn 0.6s ease-out;
+}
+
+section h2 {
+    color: #ffffff;
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin-bottom: 28px;
+    letter-spacing: -0.2px;
+    text-align: center;
+    position: relative;
+    padding-bottom: 16px;
+}
+
+section h2::after {
+    content: '';
+    display: block;
+    width: 50px;
+    height: 2px;
+    background: linear-gradient(to right, transparent, #2ecc71, transparent);
+    margin: 0 auto;
+    border-radius: 2px;
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+form {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.input-group {
+    width: 100%;
+    position: relative;
+    margin-bottom: 16px;
+}
+
+.input-group input {
+    width: 100%;
+    height: 46px;
+    padding: 0 16px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    color: #ffffff;
+    font-size: 0.875rem;
+    font-weight: 400;
+    outline: none;
+    transition: all 0.3s ease;
+    padding-right: 48px !important;
+    box-sizing: border-box;
+}
+
+.input-group input::placeholder { color: rgba(255, 255, 255, 0.3); font-weight: 300; }
+.input-group input:focus { border-color: rgba(46, 204, 113, 0.5); background: rgba(255, 255, 255, 0.06); box-shadow: 0 0 0 3px rgba(46, 204, 113, 0.08); }
+
+.toggle-password {
+    position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: pointer; color: #888;
+    padding: 4px; display: flex; align-items: center; justify-content: center; transition: color 0.25s ease;
+}
+.toggle-password:hover { color: #2ecc71; }
+.toggle-password:focus { outline: 2px solid #4A90D9; outline-offset: 2px; }
+.toggle-password svg { width: 20px; height: 20px; display: block; }
+
+.btn-register {
+    width: 100%; height: 46px; margin-top: 6px; border: none; border-radius: 12px;
+    background: linear-gradient(135deg, #0d6b3a, #0a4a7a); color: #ffffff;
+    font-size: 0.9rem; font-weight: 600; cursor: pointer; position: relative;
+    overflow: hidden; transition: all 0.4s ease; letter-spacing: 0.2px;
+}
+.btn-register::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(135deg, #2ecc71, #3498db); opacity: 0; transition: opacity 0.4s ease;
+}
+.btn-register span { position: relative; z-index: 1; }
+.btn-register:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(46, 204, 113, 0.2); }
+.btn-register:hover::before { opacity: 1; }
+.btn-register:active { transform: translateY(0); }
+
+.links { display: flex; margin-top: 20px; margin-bottom: 4px; font-size: 0.8rem; color: rgba(255, 255, 255, 0.35); justify-content: center; }
+.links a, .links .separator { margin: 0 5px; }
+.links a { color: rgba(255, 255, 255, 0.6); text-decoration: none; font-weight: 400; transition: color 0.3s ease; }
+.links a:hover { color: #2ecc71; }
+.links .separator { color: rgba(255, 255, 255, 0.2); }
+
+form .input-group:nth-child(1) { animation: fieldIn 0.4s ease-out 0.1s both; }
+form .input-group:nth-child(2) { animation: fieldIn 0.4s ease-out 0.15s both; }
+form .input-group:nth-child(3) { animation: fieldIn 0.4s ease-out 0.2s both; }
+form .input-group:nth-child(4) { animation: fieldIn 0.4s ease-out 0.25s both; }
+
+@keyframes cardIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fieldIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+
+/* ── ESTILOS DEL MODAL (Actualizado a tema oscuro) ── */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.7); /* Fondo más oscuro para bloquear el fondo */
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-overlay.active { display: flex; }
+
+.modal-contenido {
+    background: linear-gradient(165deg, rgba(10, 40, 80, 0.95), rgba(5, 30, 15, 0.98));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 30px;
+    border-radius: 20px;
+    width: 90%;
+    max-width: 400px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    text-align: center;
+    animation: cardIn 0.3s ease-out;
+}
+
+.modal-contenido h3 { margin-top: 0; margin-bottom: 8px; color: #ffffff; font-size: 1.1rem; }
+.modal-descripcion { color: rgba(255,255,255,0.5); font-size: 0.8rem; margin-bottom: 20px; }
+
+.modal-contenido .input-group input {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    text-align: center; /* Centrar texto del código */
+    font-size: 1.2rem;
+    letter-spacing: 4px;
+    font-weight: 600;
+}
+
+.intentos-texto { color: #2ecc71; font-size: 0.8rem; margin-top: 12px; font-weight: 500; transition: color 0.3s; }
+.timer-texto { color: rgba(255,255,255,0.4); font-size: 0.75rem; margin-top: 4px; margin-bottom: 16px; }
+
+.btn-validate {
+    width: 100%; height: 42px; margin-top: 4px; border: 1px solid rgba(46, 204, 113, 0.25);
+    border-radius: 12px; background: rgba(46, 204, 113, 0.08); color: rgba(255, 255, 255, 0.85);
+    font-size: 0.85rem; font-weight: 500; cursor: pointer; position: relative; overflow: hidden;
+    transition: all 0.4s ease; letter-spacing: 0.2px;
+}
+.btn-validate::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(135deg, rgba(46, 204, 113, 0.25), rgba(52, 152, 219, 0.25));
+    opacity: 0; transition: opacity 0.4s ease;
+}
+.btn-validate span { position: relative; z-index: 1; }
+.btn-validate:hover { border-color: rgba(46, 204, 113, 0.5); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(46, 204, 113, 0.1); }
+.btn-validate:hover::before { opacity: 1; }
+.btn-validate:active { transform: translateY(0); }
+.btn-validate:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+
+.modal-botones { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.btn-cerrar-modal { background: none; border: none; color: rgba(255,255,255,0.4); cursor: pointer; font-size: 0.85rem; text-decoration: underline; transition: color 0.2s ease; margin-top: 5px; }
+.btn-cerrar-modal:hover { color: #e74c3c; }
+
+@media (max-width: 480px) {
+    section { padding: 32px 24px 28px; border-radius: 16px; margin: 16px; }
+    .modal-contenido { padding: 24px; }
+}

@@ -1,0 +1,309 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+    background: #041a0a;
+    /* Fallback sólido por si falla el gradiente */
+    background: linear-gradient(160deg, #020e02 0%, #052a05 30%, #073d1a 50%, #0a1f4a 75%, #030b2e 100%);
+    min-height: 100vh;
+    width: 100vw;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+}
+
+/* ── Header ── */
+.header {
+    text-align: center;
+    padding: 40px 24px 20px;
+    position: relative;
+}
+
+.header::after {
+    content: '';
+    display: block;
+    width: 60px;
+    height: 3px;
+    background: linear-gradient(to right, transparent, #2ecc71, transparent);
+    margin: 18px auto 0;
+    border-radius: 2px;
+}
+
+.header h1 {
+    color: #ffffff;
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+}
+
+.header h1 span {
+    background: linear-gradient(135deg, #2ecc71, #3498db);
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    /* Aún se requiere para el texto recortado */
+}
+
+.header p {
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 0.9rem;
+    font-weight: 300;
+    max-width: 520px;
+    margin: 12px auto 0;
+    line-height: 1.65;
+}
+
+/* ── Main ── */
+main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+/* ── Login Card ── */
+.login-card {
+    width: 100%;
+    max-width: 400px;
+    /* Opacidad ajustada porque backdrop-filter NO existe en Firefox 45 */
+    background: #091e15;
+    background: linear-gradient(165deg, rgba(10, 40, 80, 0.85), rgba(5, 30, 15, 0.9));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    padding: 40px 36px 36px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    box-shadow:
+        0 4px 30px rgba(0, 0, 0, 0.4),
+        0 0 80px rgba(46, 204, 113, 0.04),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Icono decorativo */
+.login-icon {
+    max-width: 56px;
+    max-height: 56px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #0d6b3a, #0a3d7a);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    box-sizing: border-box;
+
+}
+
+.login-icon img {   
+    width: 140px;
+    height: 160px;
+    fill: none;
+    stroke: #ffffff;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+
+}
+
+.login-card h2 {
+    color: #ffffff;
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin-bottom: 28px;
+    letter-spacing: -0.2px;
+}
+
+/* ── Inputs ── */
+.input-group {
+    width: 100%;
+    position: relative;
+    margin-bottom: 20px;
+}
+
+.input-group svg {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    stroke: rgba(255, 255, 255, 0.3);
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: stroke 0.3s ease;
+}
+
+.input-group input {
+    width: 100%;
+    height: 46px;
+    padding: 0 16px 0 42px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    color: #ffffff;
+    font-size: 0.875rem;
+    font-weight: 400;
+    outline: none;
+    transition: all 0.3s ease;
+}
+
+.input-group input::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+    font-weight: 300;
+}
+
+.input-group input:focus {
+    border-color: rgba(46, 204, 113, 0.5);
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: 0 0 0 3px rgba(46, 204, 113, 0.08);
+}
+
+/* Funciona en FF45 gracias a que el SVG está antes del Input en el HTML */
+.input-group input:focus+svg {
+    stroke: rgba(46, 204, 113, 0.7);
+}
+
+/* ── Botón ── */
+.btn-login {
+    width: 100%;
+    height: 46px;
+    margin-top: 8px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #0d6b3a, #0a4a7a);
+    color: #ffffff;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.4s ease;
+    letter-spacing: 0.2px;
+}
+
+.btn-login::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    /* 'inset: 0' no es soportado en FF45 */
+    background: linear-gradient(135deg, #2ecc71, #3498db);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
+
+.btn-login span {
+    position: relative;
+    z-index: 1;
+}
+
+.btn-login:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 24px rgba(46, 204, 113, 0.2);
+}
+
+.btn-login:hover::before {
+    opacity: 1;
+}
+
+.btn-login:active {
+    transform: translateY(0);
+}
+
+/* ── Links ── */
+.links {
+    display: flex;
+    margin-top: 24px;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.35);
+}
+
+/* 'gap' no es soportado en flexbox para FF45, se usa margen */
+.links a,
+.links .separator {
+    margin: 0 3px;
+}
+
+.links a {
+    color: rgba(255, 255, 255, 0.6);
+    text-decoration: none;
+    font-weight: 400;
+    transition: color 0.3s ease;
+}
+
+.links a:hover {
+    color: #2ecc71;
+    text-decoration: none;
+}
+
+.links .separator {
+    color: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Footer ── */
+footer {
+    padding: 18px 24px;
+    text-align: center;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(0, 0, 0, 0.3);
+}
+
+footer p {
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 0.75rem;
+    font-weight: 400;
+    letter-spacing: 0.2px;
+}
+
+/* ── Fondo decorativo sutil ── */
+.bg-glow {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    pointer-events: none;
+    z-index: -1;
+}
+
+.bg-glow.g1 {
+    width: 400px;
+    height: 400px;
+    background: rgba(10, 80, 40, 0.15);
+    top: -100px;
+    right: -100px;
+}
+
+.bg-glow.g2 {
+    width: 350px;
+    height: 350px;
+    background: rgba(10, 30, 100, 0.15);
+    bottom: -80px;
+    left: -80px;
+}
+
+/* ── Responsive ── */
+@media (max-width: 480px) {
+    .header h1 {
+        font-size: 1.5rem;
+    }
+
+    .header p {
+        font-size: 0.82rem;
+    }
+
+    .login-card {
+        padding: 32px 24px 28px;
+        border-radius: 16px;
+    }
+}

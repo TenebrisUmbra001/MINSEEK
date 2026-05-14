@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatMinSeek</title>
+    <link rel="stylesheet" href="/InicioSesion/index.css">
+    <link rel="shortcut icon" href="../Assets/LOGO IA CCR.png" type="image/x-icon">
+
+</head>
+
+<body>
+
+    <!-- Resplandores decorativos de fondo -->
+    <div class="bg-glow g1"></div>
+    <div class="bg-glow g2"></div>
+
+    <!-- Header -->
+    <header class="header">
+        <h1>Chat<span>  IACCR</span></h1>
+        <p>Bienvenido a IACCR, tu asistente de inteligencia artificial para responder preguntas y ayudarte con tus
+            tareas. ¡Hazme cualquier pregunta o dime en qué puedo ayudarte!</p>
+    </header>
+
+    <!-- Main -->
+    <main>
+        <section class="login-card">
+
+            <!-- Ícono -->
+            <div class="login-icon" >
+              <img src="../Assets/LOGO IA CCR.png" alt="">
+              
+            </div>
+
+            <h2>Inicio de Sesión</h2>
+
+            <div class="input-group">
+                <svg viewBox="0 0 24 24">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                </svg>
+                <input id="User" type="text" placeholder="Ingrese su Usuario" autocomplete="username">
+            </div>
+
+            <div class="input-group">
+                <svg viewBox="0 0 24 24">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+                <input id="pass" type="password" placeholder="Ingrese su Contraseña" autocomplete="current-password">
+            </div>
+
+            <button onclick="Iniciar()" class="btn-login" type="button">
+                <span>Iniciar Sesión</span>
+            </button>
+
+            <div class="links">
+                <a href="../Registro/Registrarse.html">Registrarse</a>
+                <span class="separator">/</span>
+                <a href="#">Olvido de Contraseña</a>
+            </div>
+
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2026 CCR MININT Pinar del Rio. Todos los derechos reservados.</p>
+    </footer>
+    <script src="/InicioSesion/index.js"></script>
+</body>
+
+</html>

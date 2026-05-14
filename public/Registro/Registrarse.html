@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registrar Cuenta</title>
+    <link rel="shortcut icon" href="../Assets/LOGO IA CCR.png" type="image/x-icon">
+    <link rel="stylesheet" href="Registrarse.css">
+</head>
+
+<body>
+
+    <section>
+        <h2>Registrar Cuenta</h2>
+
+        <form id="formRegistro">
+            <div class="input-group">
+                <input id="Usuario" type="text" placeholder="Ingrese su Usuario" autocomplete="username" required>
+            </div>
+            <div class="input-group">
+                <input id="Correo" type="email" placeholder="Ingrese su Correo Electrónico Zimbra" autocomplete="email" required>
+            </div>
+
+            <div class="input-group">
+                <input id="Contraseña" type="password" placeholder="Ingrese su Contraseña" autocomplete="new-password" required>
+                <button type="button" class="toggle-password" data-target="Contraseña" aria-label="Mostrar contraseña">
+                    <svg class="eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                    <svg class="eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                        <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                        <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/>
+                        <line x1="1" y1="1" x2="23" y2="23"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="input-group">
+                <input id="ConfirmarContraseña" type="password" placeholder="Confirme su Contraseña" autocomplete="new-password" required>
+                <button type="button" class="toggle-password" data-target="ConfirmarContraseña" aria-label="Mostrar contraseña">
+                    <svg class="eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                    <svg class="eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                        <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                        <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/>
+                        <line x1="1" y1="1" x2="23" y2="23"/>
+                    </svg>
+                </button>
+            </div>
+
+            <button class="btn-register" type="button" onclick="ValidarCorreo()">
+                <span>Registrar Cuenta</span>
+            </button>
+
+            <div class="links">
+                <a href="../InicioSesion/index.html">Inicio de Sesion</a>
+                <span class="separator">/</span>
+                <a href="#">Olvido de Contraseña</a>
+            </div>
+        </form>
+    </section>
+
+    <!-- Modal de Código de Seguridad -->
+    <div id="modalCodigo" class="modal-overlay">
+        <div class="modal-contenido">
+            <h3>Código de Seguridad</h3>
+            <p class="modal-descripcion">Ingrese el código enviado a su correo.</p>
+            <div class="input-group">
+                <input id="Codigo" type="text" placeholder="Ingrese el Código" autocomplete="off">
+            </div>
+            <!-- Textos de intentos y timer -->
+            <p id="intentosModal" class="intentos-texto">Intentos restantes: 5</p>
+            <p id="timerModalTexto" class="timer-texto">Tiempo restante: 10:00</p>
+            
+            <div class="modal-botones">
+                <button id="btnValidarCodigo" class="btn-validate" type="button" onclick="ValidarCodigo()">
+                    <span>Validar Código</span>
+                </button>
+                <button type="button" class="btn-cerrar-modal" onclick="CerrarModal()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="index.js"></script>
+</body>
+
+</html>

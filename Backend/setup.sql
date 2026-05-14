@@ -1,0 +1,115 @@
+-- ============================================================================
+-- SCRIPT DE INICIALIZACIÓN DE BASE DE DATOS (setup.sql)
+-- Sistema de Autenticación, Conversaciones y Auditoría
+-- ============================================================================
+-- NOTA: En SQLite, los PRAGMAs deben ejecutarse antes de crear las tablas
+-- para asegurar que se apliquen correctamente (ej. claves foráneas).
+-- ============================================================================
+
+-- 1. CONFIGURACIONES DE PRODUCCIÓN (PRAGMAs)
+PRAGMA journal_mode = WAL;       -- Write-Ahead Logging: Permite lecturas mientras se escribe (Crítico para Express)
+PRAGMA foreign_keys = ON;        -- Activa la validación de claves foráneas (SQLite lo trae OFF por defecto)
+PRAGMA busy_timeout = 5000;      -- Si hay bloqueo, espera 5 segundos en lugar de fallar al instante
+
+-- 2. LIMPIEZA (Opcional - Comentar si no se desea borrar datos existentes)
+-- DROP TABLE IF EXISTS IntentoLogin;
+-- DROP TABLE IF EXISTS HistorialConexion;
+-- DROP TABLE IF EXISTS AuditoriaRequest;
+-- DROP TABLE IF EXISTS UltimasConversaciones;
+-- DROP TABLE IF EXISTS Usuario;
+
+-- ============================================================================
+-- 3. TABLAS OPERATIVAS
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS Usuario (
+    id TEXT PRIMARY KEY, 
+    NombreUsuario TEXT NOT NULL UNIQUE,
+    Password TEXT NOT NULL, 
+    Correo TEXT NOT NULL UNIQUE,
+    FechaCreacionCuenta TEXT NOT NULL DEFAULT (datetime('now')),
+    FechaUltimaConexion TEXT
+);
+
+CREATE TABLE IF NOT EXISTS UltimasConversaciones (
+    id TEXT PRIMARY KEY, 
+    idUsuario TEXT NOT NULL,
+    TituloConversacion TEXT NOT NULL,
+    FechaCreada TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (idUsuario) REFERENCES Usuario(id) ON DELETE CASCADE
+);
+
+-- ============================================================================
+-- 4. TABLAS DE AUDITORÍA Y SEGURIDAD
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS AuditoriaRequest (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    idUsuario TEXT,
+    IpOrigen TEXT NOT NULL,
+    UserAgent TEXT,
+    MetodoHttp TEXT NOT NULL,
+    RutaAccedida TEXT NOT NULL,
+    CodigoRespuesta INTEGER NOT NULL,
+    FechaRequest TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (idUsuario) REFERENCES Usuario(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS HistorialConexion (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    idUsuario TEXT NOT NULL,
+    IpOrigen TEXT NOT NULL,
+    FechaConexion TEXT NOT NULL DEFAULT (datetime('now')),
+    FechaDesconexion TEXT,
+    EsExitosa INTEGER NOT NULL DEFAULT 1, 
+    FOREIGN KEY (idUsuario) REFERENCES Usuario(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS IntentoLogin (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    Identificador TEXT NOT NULL, 
+    IpOrigen TEXT NOT NULL,
+    EsExitoso INTEGER NOT NULL DEFAULT 0,
+    FechaIntento TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ============================================================================
+-- 5. ÍNDICES ESTRATÉGICOS
+-- ============================================================================
+
+-- Operativos
+CREATE INDEX IF NOT EXISTS idx_conversaciones_usuario ON UltimasConversaciones(idUsuario, FechaCreada DESC);
+
+-- Auditoría
+CREATE INDEX IF NOT EXISTS idx_auditoria_usuario_fecha ON AuditoriaRequest(idUsuario, FechaRequest DESC);
+CREATE INDEX IF NOT EXISTS idx_auditoria_ruta ON AuditoriaRequest(RutaAccedida);
+CREATE INDEX IF NOT EXISTS idx_historial_usuario ON HistorialConexion(idUsuario, FechaConexion DESC);
+CREATE INDEX IF NOT EXISTS idx_historial_inactivos ON HistorialConexion(FechaDesconexion);
+CREATE INDEX IF NOT EXISTS idx_intentos_ip_fecha ON IntentoLogin(IpOrigen, FechaIntento DESC);
+CREATE INDEX IF NOT EXISTS idx_intentos_identificador ON IntentoLogin(Identificador, FechaIntento DESC);
+
+-- ============================================================================
+-- 6. TRIGGERS DE AUTOMATIZACIÓN
+-- ============================================================================
+
+-- Trigger: Cerrar sesiones abiertas anteriores al iniciar una nueva
+CREATE TRIGGER IF NOT EXISTS trg_cerrar_sesion_anterior
+AFTER INSERT ON HistorialConexion
+FOR EACH ROW
+WHEN NEW.EsExitosa = 1
+BEGIN
+    UPDATE HistorialConexion 
+    SET FechaDesconexion = NEW.FechaConexion 
+    WHERE idUsuario = NEW.idUsuario AND FechaDesconexion IS NULL;
+END;
+
+-- Trigger: Actualizar la fecha de última conexión en el perfil del usuario
+CREATE TRIGGER IF NOT EXISTS trg_actualizar_ultima_conexion
+AFTER INSERT ON HistorialConexion
+FOR EACH ROW
+WHEN NEW.EsExitosa = 1
+BEGIN
+    UPDATE Usuario 
+    SET FechaUltimaConexion = NEW.FechaConexion 
+    WHERE id = NEW.idUsuario;
+END;
