@@ -181,8 +181,8 @@ function extractThink(text) {
 function removeThink(text) {
   return text.replace(/思索[\s\S]*?<\/think>/gi, '').trim();
 }
-
-/* ── Nueva conversación ── */
+/*
+/* ── Nueva conversación ── *//*
 btnNewChat.addEventListener('click', function() {
   messages = [];
   currentConvId = null;
@@ -192,7 +192,7 @@ btnNewChat.addEventListener('click', function() {
   if (isMobile()) closeSidebar();
   userInput.focus();
 });
-
+*/
 function makeWelcome() {
   var d = document.createElement('div');
   d.className = 'welcome-state'; d.id = 'welcomeState';

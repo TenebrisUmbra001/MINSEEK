@@ -197,7 +197,8 @@ async function RegistroCuenta() {
         return false;
     }
 
-    // Validar dominio del correo
+    // === VALIDACIÓN EN CLIENTE (UX/FEEDBACK) ===
+    // Validar dominio del correo - Zimbra
     const dominioCorrecto = "mail.das.pdr";
     const partes = correo.split("@");
     
@@ -206,9 +207,17 @@ async function RegistroCuenta() {
         return false;
     }
 
-    const dominioIngresado = partes[1];
+    const [usuarioCorreo, dominioIngresado] = partes;
+
     if (dominioIngresado !== dominioCorrecto) {
         alert("El correo debe terminar en @" + dominioCorrecto);
+        return false;
+    }
+
+    // Validar caracteres en la parte local del correo
+    const regexCorreo = /^[a-zA-Z0-9._-]+$/;
+    if (!regexCorreo.test(usuarioCorreo)) {
+        alert("El correo contiene caracteres inválidos. Solo se permiten letras, números, puntos, guiones y guiones bajos.");
         return false;
     }
 
@@ -221,6 +230,12 @@ async function RegistroCuenta() {
     // Validar longitud de contraseña
     if (contraseña.length < 6) {
         alert("La contraseña debe tener al menos 6 caracteres");
+        return false;
+    }
+
+    // Validar longitud de usuario
+    if (usuario.length < 3 || usuario.length > 50) {
+        alert("El usuario debe tener entre 3 y 50 caracteres");
         return false;
     }
 
