@@ -17,17 +17,24 @@ const log = {
 };
 
 // -----------------------------
-// MAPA DE MODELOS CON LÍMITES DE CONCURRENCIA
+// MAPA DE MODELOS (POR PRIORIDAD) Y LÍMITES INDIVIDUALES
 // -----------------------------
 const modelos = {
-  router:           { name: "qwen2.5:1.5b",      limit: 4 },
-  consulta_rapida:  { name: "phi3:mini",          limit: 6 },
-  resumen:          { name: "qwen2.5:3b",         limit: 3 },
-  redaccion:        { name: "llama3.1:8b",        limit: 2 },
-  razonamiento:     { name: "deepseek-r1:7b",     limit: 2 },
-  analisis_profundo:{ name: "deepseek-r1:14b",    limit: 1 },
-  codigo:           { name: "codeqwen:7b",        limit: 2 },
-  multimodal:       { name: "llava:7b",           limit: 1 }
+  router:           ["qwen2.5:1.5b"],
+  consulta_rapida:  ["phi3:mini", "deepseek-r1:1.5b", "llama3.2:1b"], 
+  resumen:          ["qwen2.5:3b"],
+  redaccion:        ["llama3.1:8b"],
+  razonamiento:     ["deepseek-r1:7b"],
+  analisis_profundo:["deepseek-r1:14b", "qwen2.5:14b"], // Intenta deepseek, si está lleno usa qwen
+  codigo:           ["codeqwen:7b", "starcoder2:3b"],
+  multimodal:       ["llava:7b", "llava:13b"]
+};
+
+// Límites de concurrencia POR MODELO INDIVIDUAL (ajusta según tu VRAM)
+const modelLimits = {
+  "qwen2.5:1.5b": 4, "phi3:mini": 3, "deepseek-r1:1.5b": 2, "llama3.2:1b": 2,
+  "qwen2.5:3b": 2, "llama3.1:8b": 1, "deepseek-r1:7b": 1, "deepseek-r1:14b": 1,
+  "qwen2.5:14b": 1, "codeqwen:7b": 1, "starcoder2:3b": 1, "llava:7b": 1, "llava:13b": 1
 };
 
 const aliasCategoria = {
@@ -47,21 +54,34 @@ app.use(express.json());
 // ============================================================================
 class ConcurrencyLimiter {
   constructor(limit) { this.limit = limit; this.running = 0; this.queue = []; }
+  
   acquire() {
     return new Promise((resolve) => {
       if (this.running < this.limit) { this.running++; resolve(); } 
       else { this.queue.push(resolve); }
     });
   }
+
+  // Método nuevo: intenta adquirir sin bloquear. Devuelve true si lo logró, false si está lleno.
+  tryAcquire() {
+    if (this.running < this.limit) {
+      this.running++;
+      return true;
+    }
+    return false;
+  }
+
   release() {
     this.running--;
     if (this.queue.length > 0) { this.running++; this.queue.shift()(); }
   }
 }
 
-const limiters = {};
-for (const cat of Object.keys(modelos)) {
-  limiters[cat] = new ConcurrencyLimiter(modelos[cat].limit);
+// Inicializar limitadores por modelo
+const modelLimiters = {};
+for (const name in modelLimits) {
+  modelLimiters[name] = new ConcurrencyLimiter(modelLimits[name]);
+  log.info(`🏗️ [LIMITER] Modelo ${name}: Máximo ${modelLimits[name]} simultáneos.`);
 }
 
 // ============================================================================
@@ -91,12 +111,37 @@ async function cerrarModelo(nombreModelo) {
 }
 
 // ============================================================================
+// BUSCADOR DE MODELO LIBRE (PRIORIDAD)
+// ============================================================================
+async function obtenerYAdquirirModelo(categoria) {
+  const modelosEnCategoria = modelos[categoria];
+  if (!modelosEnCategoria) throw new Error(`Categoría ${categoria} no existe`);
+
+  // Intento 1: Buscar el primer modelo que tenga un cupo libre instantáneamente
+  for (const modelName of modelosEnCategoria) {
+    const limiter = modelLimiters[modelName];
+    if (limiter.tryAcquire()) {
+      log.info(`✅ [DISPONIBLE] ${modelName} seleccionado para ${categoria} (Ocupados: ${limiter.running}/${limiter.limit})`);
+      return modelName;
+    } else {
+      log.warn(`⏳ [OCUPADO] ${modelName} está lleno. Probando siguiente modelo...`);
+    }
+  }
+
+  // Intento 2: Si TODOS están ocupados, nos ponemos en la cola del PRIMER modelo (prioridad principal)
+  const primerModelo = modelosEnCategoria[0];
+  log.warn(`🟥 [COLA LLENA] Todos los modelos de ${categoria} ocupados. Esperando cupo de ${primerModelo}...`);
+  await modelLimiters[primerModelo].acquire(); // El código se pausa aquí hasta que haya cupo
+  return primerModelo;
+}
+
+// ============================================================================
 // FLUJO PRINCIPAL CON CONTROL DE CONCURRENCIA
 // ============================================================================
 
 async function categorizar(prompt) {
-  const modeloRouter = modelos.router.name;
-  const limiter = limiters.router;
+  const modeloRouter = modelos.router[0]; // El router es fijo
+  const limiter = modelLimiters[modeloRouter];
 
   log.info(`📥 [CATEGORIZAR] Solicitando cupo de Router...`);
   await limiter.acquire();
@@ -137,13 +182,8 @@ async function categorizar(prompt) {
     await cerrarModelo(modeloRouter);
 
     let categoria = (data.response || '').toString().trim().toLowerCase();
-    
-    // --- SOLUCIÓN A LAS TILDES ---
-    // 1. Normalizamos el texto para descomponer las tildes (NFD)
-    // 2. Eliminamos los caracteres de tilde (\u0300-\u036f)
-    // 3. Luego sí limpiamos cualquier otro símbolo raro
     categoria = categoria.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); 
-    categoria = categoria.replace(/[^a-z_]/g, ''); // Ahora la 'a' sin tilde pasa intacta
+    categoria = categoria.replace(/[^a-z_]/g, ''); 
 
     const resuelta = aliasCategoria[categoria];
 
@@ -166,28 +206,23 @@ async function categorizar(prompt) {
 }
 
 async function usarModelo(categoria, prompt) {
-  const modelo = modelos[categoria].name;
-  const limiter = limiters[categoria];
+  // Obtenemos el modelo libre y ocupamos su cupo
+  const modelo = await obtenerYAdquirirModelo(categoria);
+  const limiter = modelLimiters[modelo];
 
-  log.info(`⚙️ [EJECUTAR] Solicitando cupo para ${categoria} (${modelo})...`);
-  await limiter.acquire();
-
-  log.info(`🚀 [MODELO EJECUTANDO] Cupo asignado. Enviando tarea a ${modelo}...`);
+  log.info(`🚀 [MODELO EJECUTANDO] Enviando tarea a ${modelo}...`);
   
   const controller = new AbortController();
-  // 5 minutos de timeout porque cargar modelos de 14B desde disco puede tardar
   const timeout = setTimeout(() => controller.abort(), 300000); 
 
   try {
-    // CAMBIO CLAVE: Usamos /api/chat en vez de /api/generate
-    // Esto asegura que los modelos de chat (llama3, deepseek, etc.) respondan correctamente
     const response = await fetch(`${OLLAMA_BASE}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal,
       body: JSON.stringify({
         model: modelo,
-        messages: [{ role: 'user', content: prompt }], // Formato de chat
+        messages: [{ role: 'user', content: prompt }],
         stream: false,
         keep_alive: 0
       })
@@ -208,7 +243,6 @@ async function usarModelo(categoria, prompt) {
       throw new Error(data.error);
     }
 
-    // CAMBIO CLAVE: En /api/chat, la respuesta viene en data.message.content
     const respuesta = data.message?.content || '';
 
     if (!respuesta) {
@@ -236,8 +270,8 @@ async function usarModelo(categoria, prompt) {
 
 app.get('/health', (req, res) => {
   const limiterStatus = {};
-  for (const cat of Object.keys(limiters)) {
-    limiterStatus[cat] = { running: limiters[cat].running, limit: limiters[cat].limit, queued: limiters[cat].queue.length };
+  for (const name in modelLimiters) {
+    limiterStatus[name] = { running: modelLimiters[name].running, limit: modelLimiters[name].limit, queued: modelLimiters[name].queue.length };
   }
   res.status(200).json({ status: 'API Privada funcionando', ollama: OLLAMA_BASE, limiters: limiterStatus });
 });
@@ -260,49 +294,47 @@ app.post('/api/private/execute', async (req, res) => {
   }
 });
 
-// CHAT STREAMING
-// CHAT STREAMING CON ENRUTAMIENTO AUTOMÁTICO
+// CHAT STREAMING CON ENRUTAMIENTO AUTOMÁTICO Y FALLBACK
 app.post('/chat', async (req, res) => {
+  let modeloEnUso = null;
+  let limiterEnUso = null;
+
   try {
     const { messages } = req.body;
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ success: false, error: 'Mensajes inválidos' });
     }
 
-    // 1. OBTENER EL ÚLTIMO MENSAJE DEL USUARIO PARA CLASIFICARLO
     const ultimoMensaje = messages.filter(m => m.role === 'user').pop();
     const prompt = ultimoMensaje ? ultimoMensaje.content : '';
 
-    // 2. CLASIFICAR LA TAREA (Usando el Router)
     log.info(`💬 [CHAT] Clasificando nuevo mensaje de chat...`);
     const categoria = await categorizar(prompt); 
-    const modeloDestino = modelos[categoria].name;
     
-    log.info(`🔀 [CHAT ENRUTADO] Categoría: ${categoria} → Modelo destino: ${modeloDestino}`);
+    // Buscamos el modelo libre (prioridad)
+    modeloEnUso = await obtenerYAdquirirModelo(categoria);
+    limiterEnUso = modelLimiters[modeloEnUso];
     
-    const limiter = limiters[categoria];
-    await limiter.acquire();
+    log.info(`🔀 [CHAT ENRUTADO] Categoría: ${categoria} → Modelo: ${modeloEnUso}`);
 
-    // 3. INICIAR STREAM CON EL MODELO DESTINO
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    log.info(`🚀 [CHAT STREAM] Conectando a ${modeloDestino}...`);
+    log.info(`🚀 [CHAT STREAM] Conectando a ${modeloEnUso}...`);
     
     const response = await fetch(`${OLLAMA_BASE}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
-        model: modeloDestino, 
+        model: modeloEnUso, 
         messages: messages, 
         stream: true, 
-        keep_alive: 0 // Liberar al terminar
+        keep_alive: 0
       })
     });
 
     if (!response.ok) {
-      limiter.release();
       throw new Error(`Error del modelo destino: ${response.status}`);
     }
 
@@ -330,10 +362,8 @@ app.post('/chat', async (req, res) => {
       }
     }
 
-    // 4. CERRAR Y LIBERAR
-    log.info(`✅ [CHAT STREAM] Finalizado. Cerrando ${modeloDestino}.`);
-    limiter.release();
-    await cerrarModelo(modeloDestino);
+    log.info(`✅ [CHAT STREAM] Finalizado. Cerrando ${modeloEnUso}.`);
+    await cerrarModelo(modeloEnUso);
     res.end();
 
   } catch (error) {
@@ -342,6 +372,11 @@ app.post('/chat', async (req, res) => {
       return res.status(500).json({ success: false, error: 'Error en el enrutamiento de chat' });
     }
     res.end();
+  } finally {
+    // Nos aseguramos de liberar el cupo del modelo específico que se usó
+    if (modeloEnUso && limiterEnUso) {
+      limiterEnUso.release();
+    }
   }
 });
 
@@ -350,5 +385,5 @@ app.post('/chat', async (req, res) => {
 // ============================================================================
 app.listen(PORT, () => {
   log.info(`🔒 API Privada corriendo en http://localhost:${PORT}`);
-  log.info(`🧠 Modo Bajo Demanda + Control de Concurrencia Activado`);
+  log.info(`🧠 Modo Bajo Demanda + Control de Concurrencia + Fallback de Modelos Activado`);
 });
