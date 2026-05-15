@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS Usuario (
     Password TEXT NOT NULL, 
     Correo TEXT NOT NULL UNIQUE,
     FechaCreacionCuenta TEXT NOT NULL DEFAULT (datetime('now')),
-    FechaUltimaConexion TEXT
+    FechaUltimaConexion TEXT,
+    EstaConectado INTEGER NOT NULL DEFAULT 0  -- NUEVO: 0 = Desconectado, 1 = Conectado
 );
 
 CREATE TABLE IF NOT EXISTS UltimasConversaciones (
@@ -89,7 +90,7 @@ CREATE INDEX IF NOT EXISTS idx_intentos_ip_fecha ON IntentoLogin(IpOrigen, Fecha
 CREATE INDEX IF NOT EXISTS idx_intentos_identificador ON IntentoLogin(Identificador, FechaIntento DESC);
 
 -- ============================================================================
--- 6. TRIGGERS DE AUTOMATIZACIÓN
+-- 6. TRIGGERS DE AUTOMATIZACIÓN Y ESTADO DE SESIÓN
 -- ============================================================================
 
 -- Trigger: Cerrar sesiones abiertas anteriores al iniciar una nueva
@@ -112,4 +113,33 @@ BEGIN
     UPDATE Usuario 
     SET FechaUltimaConexion = NEW.FechaConexion 
     WHERE id = NEW.idUsuario;
+END;
+
+-- NUEVO Trigger: Marcar la columna EstaConectado = 1 cuando el usuario inicia sesión
+CREATE TRIGGER IF NOT EXISTS trg_marcar_conectado
+AFTER INSERT ON HistorialConexion
+FOR EACH ROW
+WHEN NEW.EsExitosa = 1
+BEGIN
+    UPDATE Usuario 
+    SET EstaConectado = 1 
+    WHERE id = NEW.idUsuario;
+END;
+
+-- NUEVO Trigger: Marcar la columna EstaConectado = 0 cuando se cierra la sesión activa
+-- Solo lo desconecta si NO tiene OTRAS sesiones simultáneas abiertas
+CREATE TRIGGER IF NOT EXISTS trg_marcar_desconectado
+AFTER UPDATE OF FechaDesconexion ON HistorialConexion
+FOR EACH ROW
+WHEN NEW.FechaDesconexion IS NOT NULL
+BEGIN
+    UPDATE Usuario 
+    SET EstaConectado = 0 
+    WHERE id = NEW.idUsuario 
+      AND NOT EXISTS (
+          SELECT 1 FROM HistorialConexion 
+          WHERE idUsuario = NEW.idUsuario 
+            AND FechaDesconexion IS NULL 
+            AND id != NEW.id
+      );
 END;
