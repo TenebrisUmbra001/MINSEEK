@@ -1,0 +1,21 @@
+Clasificación de los sistemas de aplicaciones:
+
+-Aplicaciones afimaticas
+-Software educativo
+-Software empresarial
+-Bases de Datos
+-Telecomunicaciones (por ejemplo Internet y toda su estructura lógica)
+-Videojuegos
+-Software Medico
+-Software de Calculo Numerico y Simbolico
+-Software de Diseño Asistido (CAD)
+-Softwared de Control Numerico(CAM)
+
+Una Interfaz de usuario: Elemento con el que interacciona el usuario de la aplicacion, ejecutando acciones, introduciendo u obteniendo informacion
+
+Lógica o Reglas de negocio: Son las que procesan la información para generar los resultados que persiguen, siendo el elemento fundamental que diferencia unas aplicaciones de otras.
+
+Gestion de datos: Se ocupa del almacenamiento y recuperación de la información.
+
+
+

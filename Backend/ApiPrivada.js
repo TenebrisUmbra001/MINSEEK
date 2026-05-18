@@ -6,6 +6,8 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const mammoth = require('mammoth');
+const pdfParse = require('pdf-parse');
 
 const app = express();
 const PORT = process.env.PORT ? Number(process.env.PORT) : 6969;
@@ -18,7 +20,7 @@ const log = {
 };
 
 // -----------------------------
-// MAPA DE MODELOS (POR PRIORIDAD) Y LÍMITES INDIVIDUALES
+// MAPA DE MODELOS Y LÍMITES
 // -----------------------------
 const modelos = {
   router:           ["qwen2.5:1.5b"],
@@ -64,13 +66,10 @@ if (!fs.existsSync(docsDir)) fs.mkdirSync(docsDir, { recursive: true });
 log.info('📁 [DOCS] Carpeta de documentos:', docsDir);
 
 const docsStorage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, docsDir);
-  },
+  destination: function (req, file, cb) { cb(null, docsDir); },
   filename: function (req, file, cb) {
     var safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-    var uniqueName = Date.now() + '-' + safeName;
-    cb(null, uniqueName);
+    cb(null, Date.now() + '-' + safeName);
   }
 });
 
@@ -79,11 +78,8 @@ var uploadDocs = multer({
   limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: function (req, file, cb) {
     var ext = path.extname(file.originalname).toLowerCase();
-    if (allowedExtensions.indexOf(ext) !== -1) {
-      cb(null, true);
-    } else {
-      cb(new Error('Extensión no permitida: ' + ext), false);
-    }
+    if (allowedExtensions.indexOf(ext) !== -1) cb(null, true);
+    else cb(new Error('Extensión no permitida: ' + ext), false);
   }
 });
 
@@ -92,32 +88,19 @@ var uploadDocs = multer({
 // ============================================================================
 class ConcurrencyLimiter {
   constructor(limit) { this.limit = limit; this.running = 0; this.queue = []; }
-  
   acquire() {
     return new Promise((resolve) => {
       if (this.running < this.limit) { this.running++; resolve(); } 
       else { this.queue.push(resolve); }
     });
   }
-
-  tryAcquire() {
-    if (this.running < this.limit) {
-      this.running++;
-      return true;
-    }
-    return false;
-  }
-
-  release() {
-    this.running--;
-    if (this.queue.length > 0) { this.running++; this.queue.shift()(); }
-  }
+  tryAcquire() { if (this.running < this.limit) { this.running++; return true; } return false; }
+  release() { this.running--; if (this.queue.length > 0) { this.running++; this.queue.shift()(); } }
 }
 
 const modelLimiters = {};
 for (const name in modelLimits) {
   modelLimiters[name] = new ConcurrencyLimiter(modelLimits[name]);
-  log.info(`🏗️ [LIMITER] Modelo ${name}: Máximo ${modelLimits[name]} simultáneos.`);
 }
 
 // ============================================================================
@@ -125,353 +108,189 @@ for (const name in modelLimits) {
 // ============================================================================
 const dataDir = path.join(__dirname, 'data');
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-const dbPath = path.join(dataDir, 'app.db');
-const db = new Database(dbPath);
+const db = new Database(path.join(dataDir, 'app.db'));
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
 // ============================================================================
-// FUNCIONES DE CICLO DE VIDA
+// FUNCIONES DE CICLO DE VIDA Y MODELOS
 // ============================================================================
 async function cerrarModelo(nombreModelo) {
   try {
-    await fetch(`${OLLAMA_BASE}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: nombreModelo, prompt: '', keep_alive: 0 })
-    });
-    log.info(`🗑️ [MODELO CERRADO] ${nombreModelo} liberado de VRAM.`);
-  } catch (err) {
-    log.warn(`⚠️ [ERROR CERRANDO] ${nombreModelo}: ${err.message}`);
-  }
+    await fetch(`${OLLAMA_BASE}/api/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: nombreModelo, prompt: '', keep_alive: 0 }) });
+  } catch (err) {}
 }
 
-// ============================================================================
-// BUSCADOR DE MODELO LIBRE (PRIORIDAD)
-// ============================================================================
 async function obtenerYAdquirirModelo(categoria) {
   const modelosEnCategoria = modelos[categoria];
   if (!modelosEnCategoria) throw new Error(`Categoría ${categoria} no existe`);
-
   for (const modelName of modelosEnCategoria) {
-    const limiter = modelLimiters[modelName];
-    if (limiter.tryAcquire()) {
-      log.info(`✅ [DISPONIBLE] ${modelName} seleccionado para ${categoria} (Ocupados: ${limiter.running}/${limiter.limit})`);
-      return modelName;
-    } else {
-      log.warn(`⏳ [OCUPADO] ${modelName} está lleno. Probando siguiente modelo...`);
-    }
+    if (modelLimiters[modelName].tryAcquire()) return modelName;
   }
-
   const primerModelo = modelosEnCategoria[0];
-  log.warn(`🟥 [COLA LLENA] Todos los modelos de ${categoria} ocupados. Esperando cupo de ${primerModelo}...`);
   await modelLimiters[primerModelo].acquire();
   return primerModelo;
 }
 
-// ============================================================================
-// FLUJO PRINCIPAL CON CONTROL DE CONCURRENCIA
-// ============================================================================
-
 async function categorizar(prompt) {
   const modeloRouter = modelos.router[0];
   const limiter = modelLimiters[modeloRouter];
-
-  log.info(`📥 [CATEGORIZAR] Solicitando cupo de Router...`);
   await limiter.acquire();
-  
-  log.info(`🟩 [ROUTER EJECUTANDO] Cupo asignado. Preguntando a ${modeloRouter}...`);
-  
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60000); 
-
   try {
     const response = await fetch(`${OLLAMA_BASE}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: modeloRouter,
-        prompt: `Clasifica esta tarea en EXACTAMENTE UNA de estas categorías: consulta_rapida, resumen, redaccion, razonamiento, analisis_profundo, codigo, multimodal. Solo responde con la categoría, nada más.\n\nTarea: ${prompt}`,
-        stream: false,
-        keep_alive: 0
-      })
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
+      body: JSON.stringify({ model: modeloRouter, prompt: `Clasifica esta tarea en EXACTAMENTE UNA de estas categorías: consulta_rapida, resumen, redaccion, razonamiento, analisis_profundo, codigo, multimodal. Solo responde con la categoría, nada más.\n\nTarea: ${prompt}`, stream: false, keep_alive: 0 })
     });
-
     clearTimeout(timeout);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      log.error(`❌ [ERROR ROUTER HTTP] Estado ${response.status}: ${errorText}`);
-      throw new Error(`Router falló: ${errorText}`);
-    }
-
+    if (!response.ok) throw new Error('Router falló');
     const data = await response.json();
-    
-    if (data.error) {
-      log.error(`❌ [ERROR INTERNO OLLAMA ROUTER] ${data.error}`);
-      throw new Error(data.error);
-    }
-
+    if (data.error) throw new Error(data.error);
     await cerrarModelo(modeloRouter);
-
-    let categoria = (data.response || '').toString().trim().toLowerCase();
-    categoria = categoria.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); 
-    categoria = categoria.replace(/[^a-z_]/g, ''); 
-
+    let categoria = (data.response || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z_]/g, ''); 
     const resuelta = aliasCategoria[categoria];
-
-    if (!resuelta || !modelos[resuelta]) {
-      log.warn(`⚠️ Categoría "${categoria}" no reconocida. Fallback a consulta_rapida.`);
-      return 'consulta_rapida';
-    }
-
-    log.info(`📌 [CATEGORIZADO] Categoría: ${resuelta}`);
+    if (!resuelta || !modelos[resuelta]) return 'consulta_rapida';
     return resuelta;
-
   } catch (err) {
-    clearTimeout(timeout);
-    log.error(`❌ [EXCEPCIÓN ROUTER]: ${err.message}`);
-    await cerrarModelo(modeloRouter);
-    return 'consulta_rapida'; 
-  } finally {
-    limiter.release();
-  }
+    clearTimeout(timeout); await cerrarModelo(modeloRouter); return 'consulta_rapida'; 
+  } finally { limiter.release(); }
 }
 
 async function usarModelo(categoria, prompt) {
   const modelo = await obtenerYAdquirirModelo(categoria);
   const limiter = modelLimiters[modelo];
-
-  log.info(`🚀 [MODELO EJECUTANDO] Enviando tarea a ${modelo}...`);
-  
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 300000); 
-
   try {
     const response = await fetch(`${OLLAMA_BASE}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: modelo,
-        messages: [{ role: 'user', content: prompt }],
-        stream: false,
-        keep_alive: 0
-      })
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
+      body: JSON.stringify({ model: modelo, messages: [{ role: 'user', content: prompt }], stream: false, keep_alive: 0 })
     });
-
     clearTimeout(timeout);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      log.error(`❌ [ERROR MODELO HTTP] Estado ${response.status}: ${errorText}`);
-      throw new Error(`Modelo falló: ${errorText}`);
-    }
-
+    if (!response.ok) throw new Error('Modelo falló');
     const data = await response.json();
-    
-    if (data.error) {
-      log.error(`❌ [ERROR INTERNO OLLAMA MODELO] ${data.error}`);
-      throw new Error(data.error);
-    }
-
-    const respuesta = data.message?.content || '';
-
-    if (!respuesta) {
-      log.warn(`⚠️ [RESPUESTA VACÍA] El modelo ${modelo} no generó texto.`);
-    } else {
-      log.info(`✅ [RESPUESTA RECIBIDA] de ${modelo} (${respuesta.length} caracteres). Cerrando modelo...`);
-    }
-
+    if (data.error) throw new Error(data.error);
     await cerrarModelo(modelo);
-    return respuesta;
-
+    return data.message?.content || '';
   } catch (err) {
-    clearTimeout(timeout);
-    log.error(`❌ [EXCEPCIÓN MODELO]: ${err.message}`);
-    await cerrarModelo(modelo);
-    throw err;
-  } finally {
-    limiter.release();
-  }
+    clearTimeout(timeout); await cerrarModelo(modelo); throw err;
+  } finally { limiter.release(); }
 }
 
 // ============================================================================
 // RUTAS
 // ============================================================================
-
-app.get('/health', (req, res) => {
-  const limiterStatus = {};
-  for (const name in modelLimiters) {
-    limiterStatus[name] = { running: modelLimiters[name].running, limit: modelLimiters[name].limit, queued: modelLimiters[name].queue.length };
-  }
-  res.status(200).json({ status: 'API Privada funcionando', ollama: OLLAMA_BASE, limiters: limiterStatus });
-});
+app.get('/health', (req, res) => res.status(200).json({ status: 'API Privada funcionando' }));
 
 app.post('/api/private/execute', async (req, res) => {
   try {
     const { prompt } = req.body;
-    if (!prompt || typeof prompt !== 'string') {
-      return res.status(400).json({ ok: false, error: 'Prompt inválido' });
-    }
-
+    if (!prompt) return res.status(400).json({ ok: false, error: 'Prompt inválido' });
     const categoria = await categorizar(prompt);
     const respuesta = await usarModelo(categoria, prompt);
-
     return res.status(200).json({ ok: true, categoria, respuesta });
-
   } catch (error) {
-    log.error('❌ [ERROR GENERAL EN /EXECUTE]:', error);
-    return res.status(500).json({ ok: false, error: 'Error interno del servidor', details: error.message });
+    return res.status(500).json({ ok: false, error: 'Error interno', details: error.message });
   }
 });
 
 app.post('/chat', async (req, res) => {
-  let modeloEnUso = null;
-  let limiterEnUso = null;
-
+  let modeloEnUso = null; let limiterEnUso = null;
   try {
     const { messages } = req.body;
-    if (!messages || !Array.isArray(messages)) {
-      return res.status(400).json({ success: false, error: 'Mensajes inválidos' });
-    }
-
+    if (!messages) return res.status(400).json({ success: false, error: 'Mensajes inválidos' });
     const ultimoMensaje = messages.filter(m => m.role === 'user').pop();
     const prompt = ultimoMensaje ? ultimoMensaje.content : '';
-
-    log.info(`💬 [CHAT] Clasificando nuevo mensaje de chat...`);
     const categoria = await categorizar(prompt); 
-    
     modeloEnUso = await obtenerYAdquirirModelo(categoria);
     limiterEnUso = modelLimiters[modeloEnUso];
-    
-    log.info(`🔀 [CHAT ENRUTADO] Categoría: ${categoria} → Modelo: ${modeloEnUso}`);
-
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-
-    log.info(`🚀 [CHAT STREAM] Conectando a ${modeloEnUso}...`);
-    
+    res.setHeader('Content-Type', 'text/event-stream'); res.setHeader('Cache-Control', 'no-cache'); res.setHeader('Connection', 'keep-alive');
     const response = await fetch(`${OLLAMA_BASE}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        model: modeloEnUso, 
-        messages: messages, 
-        stream: true, 
-        keep_alive: 0
-      })
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: modeloEnUso, messages: messages, stream: true, keep_alive: 0 })
     });
-
-    if (!response.ok) {
-      throw new Error(`Error del modelo destino: ${response.status}`);
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
+    if (!response.ok) throw new Error(`Error del modelo destino: ${response.status}`);
+    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = '';
     while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
-
+      const { done, value } = await reader.read(); if (done) break;
+      buffer += decoder.decode(value, { stream: true }); const lines = buffer.split('\n'); buffer = lines.pop();
       for (const line of lines) {
         if (line.trim() === '') continue;
-        try {
-          const chunk = JSON.parse(line);
-          if (chunk.message && chunk.message.content) {
-            res.write(`data: ${JSON.stringify({ content: chunk.message.content })}\n\n`);
-          }
-          if (chunk.done) res.write(`data: [DONE]\n\n`);
-        } catch (e) {}
+        try { const chunk = JSON.parse(line); if (chunk.message && chunk.message.content) res.write(`data: ${JSON.stringify({ content: chunk.message.content })}\n\n`); if (chunk.done) res.write(`data: [DONE]\n\n`); } catch (e) {}
       }
     }
-
-    log.info(`✅ [CHAT STREAM] Finalizado. Cerrando ${modeloEnUso}.`);
-    await cerrarModelo(modeloEnUso);
-    res.end();
-
+    await cerrarModelo(modeloEnUso); res.end();
   } catch (error) {
-    log.error('❌ [ERROR CHAT ENRUTADO]:', error);
-    if (!res.headersSent) {
-      return res.status(500).json({ success: false, error: 'Error en el enrutamiento de chat' });
-    }
+    if (!res.headersSent) return res.status(500).json({ success: false, error: 'Error en el enrutamiento' });
     res.end();
-  } finally {
-    if (modeloEnUso && limiterEnUso) {
-      limiterEnUso.release();
-    }
-  }
+  } finally { if (modeloEnUso && limiterEnUso) limiterEnUso.release(); }
 });
 
 // ============================================================================
-// RUTAS DE DOCUMENTOS
+// RUTAS DE DOCUMENTOS (CON EXTRACCIÓN DE TEXTO)
 // ============================================================================
+app.post('/api/private/upload', uploadDocs.single('documento'), async function (req, res) {
+  if (!req.file) return res.status(400).json({ ok: false, error: 'No se recibió ningún archivo' });
 
-app.post('/api/private/upload', uploadDocs.single('documento'), function (req, res) {
-  if (!req.file) {
-    return res.status(400).json({ ok: false, error: 'No se recibió ningún archivo' });
+  var contenidoExtraido = '';
+  var ext = path.extname(req.file.originalname).toLowerCase();
+
+  try {
+    if (ext === '.docx') {
+      var resultMammoth = await mammoth.extractRawText({ path: req.file.path });
+      contenidoExtraido = resultMammoth.value;
+    } else if (ext === '.pdf') {
+      var dataBuffer = fs.readFileSync(req.file.path);
+      var resultPdf = await pdfParse(dataBuffer);
+      contenidoExtraido = resultPdf.text;
+    } else if (['.txt', '.md', '.csv', '.json', '.xml', '.html', '.htm', '.rtf'].indexOf(ext) !== -1) {
+      contenidoExtraido = fs.readFileSync(req.file.path, 'utf8');
+    } else {
+      contenidoExtraido = '[El contenido de este tipo de archivo no se puede leer automáticamente. Es una imagen o formato binario.]';
+    }
+
+    // Limitar tamaño del texto para no saturar la memoria del modelo de IA (máx ~4000 caracteres)
+    if (contenidoExtraido.length > 4000) {
+      contenidoExtraido = contenidoExtraido.substring(0, 4000) + '\n\n[... CONTENIDO TRUNCADO POR TAMAÑO ...]';
+    }
+  } catch (extractErr) {
+    log.error('⚠️ [DOCS] Error extrayendo texto:', extractErr.message);
+    contenidoExtraido = '[Error al extraer el texto del archivo]';
   }
 
-  var fileInfo = {
+  log.info('📄 [DOCUMENTO] Archivo guardado y procesado: ' + req.file.filename + ' (' + contenidoExtraido.length + ' caracteres extraídos)');
+  
+  return res.status(200).json({
     ok: true,
     nombre: req.file.originalname,
     nombreGuardado: req.file.filename,
     tamaño: req.file.size,
     mimetype: req.file.mimetype,
-    ruta: req.file.path
-  };
-
-  log.info('📄 [DOCUMENTO] Archivo guardado: ' + req.file.filename + ' (' + req.file.size + ' bytes)');
-  return res.status(200).json(fileInfo);
+    ruta: req.file.path,
+    contenido: contenidoExtraido // <--- AQUÍ ESTÁ LA MAGIA
+  });``
 });
 
-app.get('/api/private/documents', function (req, res) {
+app.get('/api/private/documents', function (req, res){
   try {
     var files = fs.readdirSync(docsDir);
     var documents = [];
     files.forEach(function (f) {
-      try {
-        var filePath = path.join(docsDir, f);
-        var stats = fs.statSync(filePath);
-        if (stats.isFile()) {
-          documents.push({
-            nombreGuardado: f,
-            tamaño: stats.size,
-            fecha: stats.mtime
-          });
-        }
-      } catch (e) {}
+      try { var stats = fs.statSync(path.join(docsDir, f)); if (stats.isFile()) documents.push({ nombreGuardado: f, tamaño: stats.size, fecha: stats.mtime }); } catch (e) {}
     });
     return res.status(200).json({ ok: true, documentos: documents });
-  } catch (err) {
-    return res.status(500).json({ ok: false, error: 'Error al leer documentos' });
-  }
+  } catch (err) { return res.status(500).json({ ok: false, error: 'Error al leer documentos' }); }
 });
 
 app.use(function (err, req, res, next) {
-  if (err && err.code === 'LIMIT_FILE_SIZE') {
-    return res.status(400).json({ ok: false, error: 'El archivo excede el tamaño máximo permitido (50MB)' });
-  }
-  if (err && err.name === 'MulterError') {
-    return res.status(400).json({ ok: false, error: 'Error en la subida: ' + err.message });
-  }
-  if (err) {
-    return res.status(400).json({ ok: false, error: err.message });
-  }
+  if (err && err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ ok: false, error: 'Archivo muy grande (Max 50MB)' });
+  if (err && err.name === 'MulterError') return res.status(400).json({ ok: false, error: 'Error en subida: ' + err.message });
+  if (err) return res.status(400).json({ ok: false, error: err.message });
   next();
 });
 
 // ============================================================================
-// INICIO
-// ============================================================================
 app.listen(PORT, () => {
   log.info(`🔒 API Privada corriendo en http://localhost:${PORT}`);
-  log.info(`🧠 Modo Bajo Demanda + Control de Concurrencia + Fallback de Modelos Activado`);
 });
