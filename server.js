@@ -5,13 +5,14 @@ const path = require('path');
 const rateLimit = require('express-rate-limit');
 const fetch = global.fetch || require('node-fetch');
 const AbortController = global.AbortController || require('abort-controller');
+const multer = require('multer');
+const FormData = require('form-data');
 
 const app = express();
 const PORT = process.env.PORT || 2054;
 
-// Configuración de la API privada y token (usar variables de entorno)
 const PRIVATE_API_URL = process.env.PRIVATE_API_URL || 'http://localhost:6969';
-const PRIVATE_API_TOKEN = process.env.PRIVATE_API_TOKEN || ''; // obligatorio en producción
+const PRIVATE_API_TOKEN = process.env.PRIVATE_API_TOKEN || '';
 
 // ============================================================================
 // MIDDLEWARE
@@ -19,7 +20,6 @@ const PRIVATE_API_TOKEN = process.env.PRIVATE_API_TOKEN || ''; // obligatorio en
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-// Rate Limiting - Registro y Login (límite estricto)
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 5,
@@ -28,13 +28,25 @@ const authLimiter = rateLimit({
     legacyHeaders: false,
 });
 
-// Rate Limiting - Chat (límite moderado)
 const chatLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 20,
     message: 'Demasiadas solicitudes. Intenta más tarde.',
     standardHeaders: true,
     legacyHeaders: false,
+});
+
+var uploadLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    message: 'Demasiadas subidas. Intenta más tarde.',
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+var uploadMemory = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 50 * 1024 * 1024 }
 });
 
 // ============================================================================
@@ -59,7 +71,6 @@ function validarEmailZimbra(email) {
     return { valid: true };
 }
 
-// Helper: forward con timeout y retries
 async function forwardToPrivate(path, body, options = {}) {
     const maxRetries = options.maxRetries ?? 2;
     const baseDelay = options.baseDelay ?? 300;
@@ -68,7 +79,7 @@ async function forwardToPrivate(path, body, options = {}) {
     while (true) {
         attempt++;
         const controller = new AbortController();
-        const TIMEOUT_MS = options.timeoutMs ?? 90000; // 90s por defecto
+        const TIMEOUT_MS = options.timeoutMs ?? 90000;
         const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
         try {
@@ -103,7 +114,6 @@ async function forwardToPrivate(path, body, options = {}) {
 // RUTAS - PROXY A API PRIVADA CON VALIDACIÓN
 // ============================================================================
 
-// Registro
 app.post('/api/registro', authLimiter, async (req, res) => {
     try {
         const { usuario, correo, contrasena } = req.body;
@@ -115,7 +125,6 @@ app.post('/api/registro', authLimiter, async (req, res) => {
         if (usuario.length < 3 || usuario.length > 50) return res.status(400).json({ success: false, error: 'El usuario debe tener entre 3 y 50 caracteres' });
         if (contrasena.length < 6) return res.status(400).json({ success: false, error: 'La contraseña debe tener al menos 6 caracteres' });
 
-        // Reenvío seguro a API privada (no tocamos BD ni modelos)
         const result = await forwardToPrivate('/auth/register', { usuario, correo, contrasena });
         return res.status(result.status).json(result.body);
     } catch (error) {
@@ -124,7 +133,6 @@ app.post('/api/registro', authLimiter, async (req, res) => {
     }
 });
 
-// Login
 app.post('/api/login', authLimiter, async (req, res) => {
     try {
         const { usuario, contrasena } = req.body;
@@ -138,13 +146,11 @@ app.post('/api/login', authLimiter, async (req, res) => {
     }
 });
 
-// Endpoint público que reenvía solo prompt a la API privada
 app.post('/public/execute', async (req, res) => {
     try {
         const { prompt } = req.body;
         if (!prompt || typeof prompt !== 'string') return res.status(400).json({ ok: false, error: 'Prompt inválido' });
 
-        // Sanitización mínima: recortar y limitar tamaño
         const sanitized = prompt.toString().trim().slice(0, 20000);
 
         const result = await forwardToPrivate('/api/private/execute', { prompt: sanitized }, { maxRetries: 2, timeoutMs: 120000 });
@@ -155,12 +161,10 @@ app.post('/public/execute', async (req, res) => {
     }
 });
 
-// Chat streaming proxy
 app.post('/api/chat', chatLimiter, async (req, res) => {
     try {
-        // Reenvío directo del body al endpoint /chat de la API privada
         const controller = new AbortController();
-        const TIMEOUT_MS = 0; // streaming: no timeout here, rely en infra; si quieres, ajusta
+        const TIMEOUT_MS = 0;
         const timeoutId = TIMEOUT_MS ? setTimeout(() => controller.abort(), TIMEOUT_MS) : null;
 
         const response = await fetch(`${PRIVATE_API_URL}/chat`, {
@@ -179,7 +183,6 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
             return res.status(response.status).json({ success: false, error: text || 'Error desde API privada' });
         }
 
-        // Reenviar stream al cliente
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
@@ -192,7 +195,6 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
             const { done, value } = await reader.read();
             if (done) break;
             buffer += decoder.decode(value, { stream: true });
-            // enviar chunks tal cual llegan (puedes procesarlos si necesitas)
             res.write(buffer);
             buffer = '';
         }
@@ -203,6 +205,79 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
         console.error('Error en proxy de chat:', error.message || error);
         return res.status(502).json({ success: false, error: 'Error al conectar con el servidor' });
     }
+});
+
+// ============================================================================
+// RUTAS - CONVERSACIONES (STUBS PARA EVITAR 404 EN CONSOLA)
+// ============================================================================
+app.get('/api/conversations', function (req, res) {
+    return res.status(200).json({ conversations: [] });
+});
+
+app.get('/api/conversations/:id', function (req, res) {
+    return res.status(404).json({ success: false, error: 'Conversación no encontrada' });
+});
+
+// ============================================================================
+// RUTAS - SUBIDA DE DOCUMENTOS (PROXY A API PRIVADA) - CORREGIDO
+// ============================================================================
+
+app.post('/api/upload', uploadLimiter, uploadMemory.single('documento'), function (req, res) {
+    if (!req.file) {
+        return res.status(400).json({ ok: false, error: 'No se recibió ningún archivo' });
+    }
+
+    var form = new FormData();
+    form.append('documento', req.file.buffer, {
+        filename: req.file.originalname,
+        contentType: req.file.mimetype
+    });
+
+    var headers = form.getHeaders();
+    if (PRIVATE_API_TOKEN) {
+        headers['Authorization'] = 'Bearer ' + PRIVATE_API_TOKEN;
+    }
+
+    fetch(PRIVATE_API_URL + '/api/private/upload', {
+        method: 'POST',
+        headers: headers,
+        body: form.getBuffer() // <--- SOLUCIÓN: Enviar Buffer en lugar de Stream para compatibilidad con fetch nativo de Node 18+
+    })
+    .then(function (response) {
+        return response.text().then(function (text) {
+            var parsed;
+            try { parsed = JSON.parse(text); } catch (e) { parsed = { ok: false, error: text }; }
+            return { status: response.status, body: parsed };
+        });
+    })
+    .then(function (result) {
+        return res.status(result.status).json(result.body);
+    })
+    .catch(function (error) {
+        console.error('Error en proxy de upload:', error.message || error);
+        return res.status(502).json({ ok: false, error: 'Error al conectar con el servidor' });
+    });
+});
+
+app.get('/api/documents', function (req, res) {
+    var headers = {};
+    if (PRIVATE_API_TOKEN) headers['Authorization'] = 'Bearer ' + PRIVATE_API_TOKEN;
+
+    fetch(PRIVATE_API_URL + '/api/private/documents', { headers: headers })
+    .then(function (response) {
+        return response.text().then(function (text) {
+            var parsed;
+            try { parsed = JSON.parse(text); } catch (e) { parsed = { ok: false, error: text }; }
+            return { status: response.status, body: parsed };
+        });
+    })
+    .then(function (result) {
+        return res.status(result.status).json(result.body);
+    })
+    .catch(function (error) {
+        console.error('Error en proxy de documents:', error.message || error);
+        return res.status(502).json({ ok: false, error: 'Error al conectar con el servidor' });
+    });
 });
 
 // ============================================================================

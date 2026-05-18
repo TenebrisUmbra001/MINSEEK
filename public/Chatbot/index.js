@@ -9,6 +9,15 @@ var chatContainer = document.getElementById('chatContainer');
 var userInput = document.getElementById('userInput');
 var sendBtn = document.getElementById('sendBtn');
 
+var fileInput = document.getElementById('fileInput');
+var attachBtn = document.getElementById('attachBtn');
+var filePreview = document.getElementById('filePreview');
+var filePreviewName = document.getElementById('filePreviewName');
+var filePreviewSize = document.getElementById('filePreviewSize');
+var filePreviewRemove = document.getElementById('filePreviewRemove');
+var selectedFile = null;
+var MAX_FILE_SIZE = 50 * 1024 * 1024;
+
 var messages = [];
 var isStreaming = false;
 var sidebarOpen = true;
@@ -181,18 +190,7 @@ function extractThink(text) {
 function removeThink(text) {
   return text.replace(/思索[\s\S]*?<\/think>/gi, '').trim();
 }
-/*
-/* ── Nueva conversación ── *//*
-btnNewChat.addEventListener('click', function() {
-  messages = [];
-  currentConvId = null;
-  chatContainer.innerHTML = '';
-  chatContainer.appendChild(makeWelcome());
-  sidebarScroll.querySelectorAll('.conv-item').forEach(function(i) { i.classList.remove('active'); });
-  if (isMobile()) closeSidebar();
-  userInput.focus();
-});
-*/
+
 function makeWelcome() {
   var d = document.createElement('div');
   d.className = 'welcome-state'; d.id = 'welcomeState';
@@ -216,14 +214,136 @@ function timeStr() {
   return String(n.getHours()).padStart(2,'0') + ':' + String(n.getMinutes()).padStart(2,'0');
 }
 
+/* ── Formatear tamaño de archivo ── */
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 Bytes';
+  var k = 1024;
+  var sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  var i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+/* ── SVG para documento ── */
+var docSvg = '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
+
+/* ── Subir documento al servidor ── */
+function uploadDocument(file) {
+  return new Promise(function (resolve, reject) {
+    var formData = new FormData();
+    formData.append('documento', file);
+
+    fetch('/api/upload', {
+      method: 'POST',
+      body: formData
+    })
+    .then(function (response) {
+      return response.text().then(function (text) {
+        var parsed;
+        try { parsed = JSON.parse(text); } catch (e) { parsed = { ok: false, error: text }; }
+        return { status: response.status, body: parsed };
+      });
+    })
+    .then(function (result) {
+      if (result.status >= 200 && result.status < 300 && result.body.ok) {
+        resolve(result.body);
+      } else {
+        reject(new Error((result.body && result.body.error) || 'Error en la subida'));
+      }
+    })
+    .catch(function (err) {
+      reject(err);
+    });
+  });
+}
+
+/* ── Eventos de archivo ── */
+attachBtn.addEventListener('click', function () {
+  fileInput.click();
+});
+
+fileInput.addEventListener('change', function () {
+  if (fileInput.files && fileInput.files.length > 0) {
+    var file = fileInput.files[0];
+    if (file.size > MAX_FILE_SIZE) {
+      window.alert('El archivo excede el tamaño máximo de 50MB');
+      fileInput.value = '';
+      return;
+    }
+    selectedFile = file;
+    filePreviewName.textContent = file.name;
+    filePreviewSize.textContent = formatFileSize(file.size);
+    filePreview.style.display = '-webkit-flex';
+    filePreview.style.display = 'flex';
+  }
+});
+
+filePreviewRemove.addEventListener('click', function () {
+  selectedFile = null;
+  fileInput.value = '';
+  filePreview.style.display = 'none';
+});
+
+/* ── Limpiar archivo seleccionado ── */
+function clearSelectedFile() {
+  selectedFile = null;
+  fileInput.value = '';
+  filePreview.style.display = 'none';
+}
+
 /* ── Enviar mensaje ── */
 async function sendMessage() {
   var text = userInput.value.trim();
-  if (!text || isStreaming) return;
+  var hasFile = selectedFile !== null;
+
+  if ((!text && !hasFile) || isStreaming) return;
 
   var ws = document.getElementById('welcomeState');
   if (ws) ws.remove();
 
+  // ── Subida de documento ──
+  if (hasFile) {
+    var file = selectedFile;
+    clearSelectedFile();
+
+    var uploadDiv = document.createElement('div');
+    uploadDiv.className = 'message user doc-message';
+    uploadDiv.innerHTML =
+      '<div class="doc-icon-wrap">' + docSvg + '</div>' +
+      '<div class="doc-info">' +
+        '<div class="doc-name">' + esc(file.name) + '</div>' +
+        '<div class="doc-size">' + formatFileSize(file.size) + '</div>' +
+        '<div class="doc-status uploading">Subiendo...</div>' +
+      '</div>';
+    chatContainer.appendChild(uploadDiv);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+
+    try {
+      var result = await uploadDocument(file);
+      uploadDiv.innerHTML =
+        '<div class="doc-icon-wrap">' + docSvg + '</div>' +
+        '<div class="doc-info">' +
+          '<div class="doc-name">' + esc(result.nombre || file.name) + '</div>' +
+          '<div class="doc-size">' + formatFileSize(result.tamaño || file.size) + '</div>' +
+          '<div class="doc-status success">✓ Guardado correctamente</div>' +
+        '</div>' +
+        '<div class="msg-time">' + timeStr() + '</div>';
+    } catch (err) {
+      uploadDiv.className = 'message error doc-message';
+      uploadDiv.innerHTML =
+        '<div class="doc-icon-wrap">' + docSvg + '</div>' +
+        '<div class="doc-info">' +
+          '<div class="doc-name">' + esc(file.name) + '</div>' +
+          '<div class="doc-status error">Error: ' + esc(err.message || 'Desconocido') + '</div>' +
+        '</div>';
+    }
+
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+
+    // Si solo se subió archivo sin texto, terminamos aquí
+    if (!text) { loadHistory(); userInput.focus(); return; }
+  }
+
+  // ── Mensaje de texto al IA (flujo existente) ──
   var userDiv = document.createElement('div');
   userDiv.className = 'message user';
   userDiv.innerHTML = esc(text) + '<div class="msg-time">' + timeStr() + '</div>';
@@ -312,7 +432,7 @@ async function sendMessage() {
 
 /* ── Renderizar con bloques think ── */
 function renderThinking(div, full) {
-  var tO = '<tool_call>', tC = '';
+  var tO = '思索', tC = '';
   var depth = 0, lastEnd = 0, i = 0;
   while (i < full.length) {
     if (full.substring(i, i + tO.length) === tO) { depth++; i += tO.length; }

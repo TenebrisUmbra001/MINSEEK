@@ -551,12 +551,14 @@ body {
 .input-wrapper {
   max-width: 680px;
   margin: 0 auto;
+  display: -webkit-flex;
   display: flex;
+  -webkit-align-items: center;
   align-items: center;
   background: rgba(255, 255, 255, .04);
   border: 1px solid rgba(255, 255, 255, .08);
   border-radius: 13px;
-  padding: 3px 3px 3px 15px;
+  padding: 3px 3px 3px 3px;
   transition: all .3s ease;
 }
 
@@ -567,6 +569,7 @@ body {
 }
 
 .input-wrapper input {
+  -webkit-flex: 1;
   flex: 1;
   height: 36px;
   border: none;
@@ -591,10 +594,14 @@ body {
   background: linear-gradient(135deg, #0d6b3a, #0a4a7a);
   color: #fff;
   cursor: pointer;
+  display: -webkit-flex;
   display: flex;
+  -webkit-align-items: center;
   align-items: center;
+  -webkit-justify-content: center;
   justify-content: center;
   transition: all .3s ease;
+  -webkit-flex-shrink: 0;
   flex-shrink: 0;
   position: relative;
   overflow: hidden;
@@ -674,6 +681,225 @@ body {
   opacity: 1;
 }
 
+/* ── Botón Adjuntar ── */
+.btn-attach {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: rgba(255, 255, 255, .45);
+  cursor: pointer;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  -webkit-transition: all .3s ease;
+  transition: all .3s ease;
+  -webkit-flex-shrink: 0;
+  flex-shrink: 0;
+  margin-right: 6px;
+  margin-left: 6px;
+}
+
+.btn-attach:hover {
+  color: rgba(46, 204, 113, .8);
+  background: rgba(46, 204, 113, .08);
+}
+
+.btn-attach svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ── Vista previa de archivo ── */
+.file-preview {
+  max-width: 680px;
+  margin: 0 auto 8px;
+  display: none;
+  -webkit-align-items: center;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(46, 204, 113, .06);
+  border: 1px solid rgba(46, 204, 113, .2);
+  border-radius: 10px;
+  -webkit-animation: msg-in .3s ease;
+  animation: msg-in .3s ease;
+}
+
+.file-preview-icon {
+  width: 28px;
+  height: 28px;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  margin-right: 10px;
+  -webkit-flex-shrink: 0;
+  flex-shrink: 0;
+}
+
+.file-preview-icon svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: rgba(46, 204, 113, .7);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.file-preview-info {
+  -webkit-flex: 1;
+  flex: 1;
+  min-width: 0;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-direction: column;
+  flex-direction: column;
+}
+
+.file-preview-name {
+  font-size: .75rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, .85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-preview-size {
+  font-size: .62rem;
+  color: rgba(255, 255, 255, .35);
+  margin-top: 1px;
+}
+
+.file-preview-remove {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .05);
+  color: rgba(255, 255, 255, .4);
+  cursor: pointer;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  -webkit-transition: all .2s ease;
+  transition: all .2s ease;
+  -webkit-flex-shrink: 0;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.file-preview-remove:hover {
+  background: rgba(220, 50, 50, .15);
+  color: rgba(255, 120, 120, .9);
+}
+
+.file-preview-remove svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* ── Mensaje de documento en chat ── */
+.message.doc-message {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  padding: 12px 15px;
+  max-width: 70%;
+}
+
+.doc-icon-wrap {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .08);
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  -webkit-flex-shrink: 0;
+  flex-shrink: 0;
+  margin-right: 12px;
+}
+
+.doc-icon-wrap svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: rgba(255, 255, 255, .7);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.doc-info {
+  -webkit-flex: 1;
+  flex: 1;
+  min-width: 0;
+}
+
+.doc-name {
+  font-size: .78rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, .9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.doc-size {
+  font-size: .65rem;
+  color: rgba(255, 255, 255, .4);
+  margin-top: 2px;
+}
+
+.doc-status {
+  font-size: .62rem;
+  margin-top: 4px;
+}
+
+.doc-status.uploading {
+  color: rgba(255, 255, 255, .35);
+}
+
+.doc-status.success {
+  color: rgba(46, 204, 113, .8);
+}
+
+.doc-status.error {
+  color: rgba(255, 120, 120, .9);
+}
+
+.message.error.doc-message .doc-icon-wrap {
+  background: rgba(220, 50, 50, .1);
+}
+
+.message.error.doc-message .doc-icon-wrap svg {
+  stroke: rgba(255, 120, 120, .7);
+}
+
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
@@ -706,6 +932,9 @@ body {
     padding: 10px 14px 14px;
   }
   .message {
+    max-width: 92%;
+  }
+  .message.doc-message {
     max-width: 92%;
   }
 }

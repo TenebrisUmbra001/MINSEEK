@@ -5,6 +5,7 @@ const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const multer = require('multer');
 
 const app = express();
 const PORT = process.env.PORT ? Number(process.env.PORT) : 6969;
@@ -25,12 +26,11 @@ const modelos = {
   resumen:          ["qwen2.5:3b"],
   redaccion:        ["llama3.1:8b"],
   razonamiento:     ["deepseek-r1:7b"],
-  analisis_profundo:["deepseek-r1:14b", "qwen2.5:14b"], // Intenta deepseek, si está lleno usa qwen
+  analisis_profundo:["deepseek-r1:14b", "qwen2.5:14b"],
   codigo:           ["codeqwen:7b", "starcoder2:3b"],
   multimodal:       ["llava:7b", "llava:13b"]
 };
 
-// Límites de concurrencia POR MODELO INDIVIDUAL (ajusta según tu VRAM)
 const modelLimits = {
   "qwen2.5:1.5b": 4, "phi3:mini": 3, "deepseek-r1:1.5b": 2, "llama3.2:1b": 2,
   "qwen2.5:3b": 2, "llama3.1:8b": 1, "deepseek-r1:7b": 1, "deepseek-r1:14b": 1,
@@ -50,6 +50,44 @@ const aliasCategoria = {
 app.use(express.json());
 
 // ============================================================================
+// CONFIGURACIÓN DE SUBIDA DE DOCUMENTOS
+// ============================================================================
+const allowedExtensions = [
+  '.pdf', '.doc', '.docx', '.txt', '.xls', '.xlsx',
+  '.ppt', '.pptx', '.odt', '.ods', '.odp', '.rtf',
+  '.csv', '.md', '.json', '.xml', '.html', '.htm',
+  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'
+];
+
+const docsDir = path.join(__dirname, 'storage', 'docs');
+if (!fs.existsSync(docsDir)) fs.mkdirSync(docsDir, { recursive: true });
+log.info('📁 [DOCS] Carpeta de documentos:', docsDir);
+
+const docsStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, docsDir);
+  },
+  filename: function (req, file, cb) {
+    var safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+    var uniqueName = Date.now() + '-' + safeName;
+    cb(null, uniqueName);
+  }
+});
+
+var uploadDocs = multer({
+  storage: docsStorage,
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: function (req, file, cb) {
+    var ext = path.extname(file.originalname).toLowerCase();
+    if (allowedExtensions.indexOf(ext) !== -1) {
+      cb(null, true);
+    } else {
+      cb(new Error('Extensión no permitida: ' + ext), false);
+    }
+  }
+});
+
+// ============================================================================
 // SISTEMA DE COLAS Y SEMÁFOROS
 // ============================================================================
 class ConcurrencyLimiter {
@@ -62,7 +100,6 @@ class ConcurrencyLimiter {
     });
   }
 
-  // Método nuevo: intenta adquirir sin bloquear. Devuelve true si lo logró, false si está lleno.
   tryAcquire() {
     if (this.running < this.limit) {
       this.running++;
@@ -77,7 +114,6 @@ class ConcurrencyLimiter {
   }
 }
 
-// Inicializar limitadores por modelo
 const modelLimiters = {};
 for (const name in modelLimits) {
   modelLimiters[name] = new ConcurrencyLimiter(modelLimits[name]);
@@ -117,7 +153,6 @@ async function obtenerYAdquirirModelo(categoria) {
   const modelosEnCategoria = modelos[categoria];
   if (!modelosEnCategoria) throw new Error(`Categoría ${categoria} no existe`);
 
-  // Intento 1: Buscar el primer modelo que tenga un cupo libre instantáneamente
   for (const modelName of modelosEnCategoria) {
     const limiter = modelLimiters[modelName];
     if (limiter.tryAcquire()) {
@@ -128,10 +163,9 @@ async function obtenerYAdquirirModelo(categoria) {
     }
   }
 
-  // Intento 2: Si TODOS están ocupados, nos ponemos en la cola del PRIMER modelo (prioridad principal)
   const primerModelo = modelosEnCategoria[0];
   log.warn(`🟥 [COLA LLENA] Todos los modelos de ${categoria} ocupados. Esperando cupo de ${primerModelo}...`);
-  await modelLimiters[primerModelo].acquire(); // El código se pausa aquí hasta que haya cupo
+  await modelLimiters[primerModelo].acquire();
   return primerModelo;
 }
 
@@ -140,7 +174,7 @@ async function obtenerYAdquirirModelo(categoria) {
 // ============================================================================
 
 async function categorizar(prompt) {
-  const modeloRouter = modelos.router[0]; // El router es fijo
+  const modeloRouter = modelos.router[0];
   const limiter = modelLimiters[modeloRouter];
 
   log.info(`📥 [CATEGORIZAR] Solicitando cupo de Router...`);
@@ -206,7 +240,6 @@ async function categorizar(prompt) {
 }
 
 async function usarModelo(categoria, prompt) {
-  // Obtenemos el modelo libre y ocupamos su cupo
   const modelo = await obtenerYAdquirirModelo(categoria);
   const limiter = modelLimiters[modelo];
 
@@ -294,7 +327,6 @@ app.post('/api/private/execute', async (req, res) => {
   }
 });
 
-// CHAT STREAMING CON ENRUTAMIENTO AUTOMÁTICO Y FALLBACK
 app.post('/chat', async (req, res) => {
   let modeloEnUso = null;
   let limiterEnUso = null;
@@ -311,7 +343,6 @@ app.post('/chat', async (req, res) => {
     log.info(`💬 [CHAT] Clasificando nuevo mensaje de chat...`);
     const categoria = await categorizar(prompt); 
     
-    // Buscamos el modelo libre (prioridad)
     modeloEnUso = await obtenerYAdquirirModelo(categoria);
     limiterEnUso = modelLimiters[modeloEnUso];
     
@@ -373,11 +404,68 @@ app.post('/chat', async (req, res) => {
     }
     res.end();
   } finally {
-    // Nos aseguramos de liberar el cupo del modelo específico que se usó
     if (modeloEnUso && limiterEnUso) {
       limiterEnUso.release();
     }
   }
+});
+
+// ============================================================================
+// RUTAS DE DOCUMENTOS
+// ============================================================================
+
+app.post('/api/private/upload', uploadDocs.single('documento'), function (req, res) {
+  if (!req.file) {
+    return res.status(400).json({ ok: false, error: 'No se recibió ningún archivo' });
+  }
+
+  var fileInfo = {
+    ok: true,
+    nombre: req.file.originalname,
+    nombreGuardado: req.file.filename,
+    tamaño: req.file.size,
+    mimetype: req.file.mimetype,
+    ruta: req.file.path
+  };
+
+  log.info('📄 [DOCUMENTO] Archivo guardado: ' + req.file.filename + ' (' + req.file.size + ' bytes)');
+  return res.status(200).json(fileInfo);
+});
+
+app.get('/api/private/documents', function (req, res) {
+  try {
+    var files = fs.readdirSync(docsDir);
+    var documents = [];
+    files.forEach(function (f) {
+      try {
+        var filePath = path.join(docsDir, f);
+        var stats = fs.statSync(filePath);
+        if (stats.isFile()) {
+          documents.push({
+            nombreGuardado: f,
+            tamaño: stats.size,
+            fecha: stats.mtime
+          });
+        }
+      } catch (e) {}
+    });
+    return res.status(200).json({ ok: true, documentos: documents });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: 'Error al leer documentos' });
+  }
+});
+
+app.use(function (err, req, res, next) {
+  if (err && err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({ ok: false, error: 'El archivo excede el tamaño máximo permitido (50MB)' });
+  }
+  if (err && err.name === 'MulterError') {
+    return res.status(400).json({ ok: false, error: 'Error en la subida: ' + err.message });
+  }
+  if (err) {
+    return res.status(400).json({ ok: false, error: err.message });
+  }
+  next();
 });
 
 // ============================================================================
