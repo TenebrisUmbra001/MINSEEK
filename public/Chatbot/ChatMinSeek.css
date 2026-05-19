@@ -937,4 +937,124 @@ body {
   .message.doc-message {
     max-width: 92%;
   }
+}/* ── Lista de archivos adjuntos (Múltiples) ── */
+.file-preview-list {
+  max-width: 680px;
+  margin: 0 auto 8px;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-wrap: wrap;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 0;
+}
+
+.file-chip {
+  display: -webkit-inline-flex;
+  display: inline-flex;
+  -webkit-align-items: center;
+  align-items: center;
+  padding: 5px 8px 5px 10px;
+  background: rgba(46, 204, 113, .06);
+  border: 1px solid rgba(46, 204, 113, .2);
+  border-radius: 18px;
+  -webkit-animation: msg-in .2s ease;
+  animation: msg-in .2s ease;
+}
+
+.file-chip-name {
+  font-size: .7rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, .8);
+  max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-chip-size {
+  font-size: .6rem;
+  color: rgba(255, 255, 255, .3);
+  margin-left: 6px;
+  margin-right: 4px;
+}
+
+.file-chip-remove {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .05);
+  color: rgba(255, 255, 255, .4);
+  cursor: pointer;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  -webkit-flex-shrink: 0;
+  flex-shrink: 0;
+  margin-left: 2px;
+  -webkit-transition: all .2s ease;
+  transition: all .2s ease;
+}
+
+.file-chip-remove:hover {
+  background: rgba(220, 50, 50, .2);
+  color: rgba(255, 120, 120, .9);
+}
+
+.file-chip-remove svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+/* ── Mensaje de documento en chat (ajustado para múltiples) ── */
+.message.doc-message {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: flex-start;
+  align-items: flex-start;
+  padding: 12px 15px;
+  max-width: 80%;
+}
+
+.doc-icon-wrap {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .08);
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  -webkit-flex-shrink: 0;
+  flex-shrink: 0;
+  margin-right: 12px;
+}
+
+.doc-icon-wrap svg {
+  width: 20px; height: 20px; fill: none; stroke: rgba(255, 255, 255, .7); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+}
+
+.doc-info { -webkit-flex: 1; flex: 1; min-width: 0; }
+.doc-name { font-size: .78rem; font-weight: 500; color: rgba(255, 255, 255, .9); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-size { font-size: .65rem; color: rgba(255, 255, 255, .4); margin-top: 2px; }
+.doc-status { font-size: .62rem; margin-top: 4px; }
+.doc-status.uploading { color: rgba(255, 255, 255, .35); }
+.doc-status.success { color: rgba(46, 204, 113, .8); }
+.doc-status.error { color: rgba(255, 120, 120, .9); }
+
+.message.error.doc-message .doc-icon-wrap { background: rgba(220, 50, 50, .1); }
+.message.error.doc-message .doc-icon-wrap svg { stroke: rgba(255, 120, 120, .7); }
+
+@media (max-width: 768px) {
+  .message.doc-message { max-width: 92%; }
 }

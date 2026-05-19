@@ -25,7 +25,6 @@
         </div>
         <div class="sidebar-logo-text">
           <strong>IACCR</strong>
-
         </div>
       </div>
       <button onclick="window.location.replace('ChatMinSeek.html')" class="btn-new-chat" id="btnNewChat">
@@ -37,10 +36,9 @@
       </button>
     </div>
     <div class="sidebar-scroll" id="sidebarScroll"></div>
+   <div class="Usuario"><img src="" alt="foto de usuario"> Nombre de usuario <div class="Opciones"> <img src="" alt="icono de opciones"> </div> </div>
     <div class="sidebar-footer">
-      
-        <p>&copy; 2026 CCR MININT Pinar del Rio. Todos los derechos reservados.</p>
-  
+      <p>&copy; 2026 CCR MININT Pinar del Rio. Todos los derechos reservados.</p>
     </div>
   </aside>
 
@@ -58,7 +56,6 @@
           <span>En linea</span>
         </div>
       </div>
-
     </header>
 
     <div class="chat-wrapper">
@@ -69,34 +66,17 @@
           </div>
           <h2>Inicia una conversacion</h2>
           <p>Escribe tu consulta abajo.</p>
-
         </div>
       </div>
     </div>
 
     <div class="input-area">
-      <div class="file-preview" id="filePreview">
-        <div class="file-preview-icon">
-          <svg viewBox="0 0 24 24">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-          </svg>
-        </div>
-        <div class="file-preview-info">
-          <span class="file-preview-name" id="filePreviewName"></span>
-          <span class="file-preview-size" id="filePreviewSize"></span>
-        </div>
-        <button class="file-preview-remove" id="filePreviewRemove" title="Quitar archivo">
-          <svg viewBox="0 0 24 24">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
+      <div class="file-preview-list" id="filePreviewList"></div>
       <div class="input-wrapper">
-        <input type="file" id="fileInput" style="display:none"
+        <!-- SE AGREGA "multiple" PARA SELECCIONAR VARIOS -->
+        <input type="file" id="fileInput" style="display:none" multiple
           accept=".pdf,.doc,.docx,.txt,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.rtf,.csv,.md,.json,.xml,.html,.htm,.png,.jpg,.jpeg,.gif,.bmp,.webp" />
-        <button class="btn-attach" id="attachBtn" title="Adjuntar documento">
+        <button class="btn-attach" id="attachBtn" title="Adjuntar documentos (máx. 10)">
           <svg viewBox="0 0 24 24">
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
           </svg>

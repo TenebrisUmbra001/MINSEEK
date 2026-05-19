@@ -28,17 +28,14 @@ for (var i = 0; i < botones.length; i++) {
 ======================================== */
 var timerModal = null;
 var timerInterval = null;
-var intentosRestantes = 5;
 var tiempoRestanteSegundos = 600; // 10 minutos en segundos
 
 function iniciarTimerModal() {
-    // Limpiar timers anteriores si existen
     if (timerModal) clearTimeout(timerModal);
     if (timerInterval) clearInterval(timerInterval);
 
-    tiempoRestanteSegundos = 600; // Reiniciar a 10 minutos
+    tiempoRestanteSegundos = 600;
 
-    // Actualizar la vista cada segundo
     timerInterval = setInterval(function() {
         tiempoRestanteSegundos--;
         
@@ -49,7 +46,7 @@ function iniciarTimerModal() {
             'Tiempo restante: ' + minutos + ':' + (segundos < 10 ? '0' : '') + segundos;
 
         if (tiempoRestanteSegundos <= 0) {
-            CerrarModal(true); // True indica que fue por timeout
+            CerrarModal(true);
         }
     }, 1000);
 }
@@ -60,14 +57,12 @@ function MostrarModalCodigo() {
     var btnValidar = document.getElementById('btnValidarCodigo');
     var intentosTexto = document.getElementById('intentosModal');
     
-    // Resetear estado del modal
     inputCodigo.value = ''; 
     inputCodigo.disabled = false;
     btnValidar.disabled = false;
     
-    intentosRestantes = 5;
-    intentosTexto.textContent = 'Intentos restantes: ' + intentosRestantes;
-    intentosTexto.style.color = '#2ecc71'; // Color verde inicial
+    intentosTexto.textContent = 'Intentos restantes: 5';
+    intentosTexto.style.color = '#2ecc71';
     
     modal.classList.add('active');
     iniciarTimerModal();
@@ -77,105 +72,17 @@ function CerrarModal(porTimeout) {
     var modal = document.getElementById('modalCodigo');
     modal.classList.remove('active');
     
-    // Detener y destruir los timers
     if (timerModal) { clearTimeout(timerModal); timerModal = null; }
     if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
 
     if (porTimeout) {
-        alert("La ventana de validación se cerró por inactividad (10 minutos). Debe intentar registrarse nuevamente.");
-    }
-}
-
-/* ========================================
-   PASO 1: Validar campos, correo y contraseñas
-======================================== */
-function ValidarCorreo() {
-    var usuario = document.getElementById("Usuario").value.trim();
-    var correo = document.getElementById("Correo").value.trim();
-    var contraseña = document.getElementById("Contraseña").value;
-    var confirmar = document.getElementById("ConfirmarContraseña").value;
-    var dominioCorrecto = "mail.das.pdr";
-
-    if (usuario === "" || correo === "" || contraseña === "" || confirmar === "") {
-        alert("Por favor, complete todos los campos.");
-        return false;
-    }
-
-    var partes = correo.split("@");
-    if (partes.length !== 2) {
-        alert("El formato del correo es incorrecto. Debe contener exactamente un '@'.");
-        return false;
-    }
-
-    var usuarioCorreo = partes[0];
-    var dominioIngresado = partes[1];
-
-    if (dominioIngresado !== dominioCorrecto) {
-        alert("El correo debe terminar en @" + dominioCorrecto);
-        return false;
-    }
-
-    var regexUsuario = /^[a-zA-Z0-9]+([._-][a-zA-Z0-9]+)*$/;
-    if (!regexUsuario.test(usuarioCorreo)) {
-        alert("La parte antes del '@' es inválida. Solo letras, números, puntos, guiones y guiones bajos.");
-        return false;
-    }
-
-    if (contraseña !== confirmar) {
-        alert("Las contraseñas no coinciden. Por favor, verifique.");
-        return false;
-    }
-
-    // Todo correcto -> Abrir modal
-    MostrarModalCodigo();
-    return true;
-}
-
-/* ========================================
-   PASO 2: Validar código de seguridad (Con intentos)
-======================================== */
-function ValidarCodigo() {
-    var codigo = document.getElementById("Codigo").value.trim();
-    var intentosTexto = document.getElementById('intentosModal');
-    var inputCodigo = document.getElementById("Codigo");
-    var btnValidar = document.getElementById('btnValidarCodigo');
-
-    if (codigo === "") {
-        alert("Por favor, ingrese el código de seguridad.");
-        return;
-    }
-
-    if (codigo === "123456") {
-        CerrarModal(false); // False indica que fue manual y exitoso
-        alert("Registro exitoso. ¡Bienvenido!");
-        // window.location.href = "../InicioSesion/index.html";
-    } else {
-        intentosRestantes--;
-        
-        if (intentosRestantes > 0) {
-            intentosTexto.textContent = 'Código incorrecto. Intentos restantes: ' + intentosRestantes;
-            intentosTexto.style.color = '#e74c3c'; // Rojo de error
-            inputCodigo.value = '';
-            inputCodigo.focus();
-        } else {
-            intentosTexto.textContent = 'Sin intentos. Bloqueado.';
-            intentosTexto.style.color = '#e74c3c';
-            inputCodigo.disabled = true;
-            btnValidar.disabled = true;
-            
-            // Esperar 3 segundos para que lea el mensaje y luego cerrar
-            setTimeout(function() {
-                CerrarModal(true);
-                // Rehabilitar botones por si quiere volver a dar "Registrar Cuenta" desde 0
-                inputCodigo.disabled = false;
-                btnValidar.disabled = false;
-            }, 3000);
-        }
+        alert("La ventana de validación se cerró por inactividad. Debe intentar registrarse nuevamente.");
+        sessionStorage.removeItem('idUsuarioRegistro'); // Limpiar sesión si expira
     }
 }
 
 /* ============================================================================
-   REGISTRO COMPLETO - Enviar datos a la API
+   PASO 1: REGISTRO COMPLETO - Enviar datos a la API
 ============================================================================ */
 
 async function RegistroCuenta() {
@@ -184,59 +91,46 @@ async function RegistroCuenta() {
     const contraseña = document.getElementById("Contraseña")?.value;
     const confirmar = document.getElementById("ConfirmarContraseña")?.value;
 
-    // Validar que los campos existan
-    if (!usuario || !correo || !contraseña) {
-        console.error("Campos del formulario no encontrados");
-        alert("Error: Formulario incompleto");
+    if (!usuario || !correo || !contraseña || !confirmar) {
+        alert("Por favor, complete todos los campos.");
         return;
     }
 
-    // Validar campos no vacíos
-    if (usuario === "" || correo === "" || contraseña === "" || confirmar === "") {
-        alert("Por favor, complete todos los campos.");
-        return false;
-    }
-
-    // === VALIDACIÓN EN CLIENTE (UX/FEEDBACK) ===
-    // Validar dominio del correo - Zimbra
+    // Validar dominio del correo
     const dominioCorrecto = "mail.das.pdr";
     const partes = correo.split("@");
     
     if (partes.length !== 2) {
-        alert("El formato del correo es incorrecto. Debe contener exactamente un '@'.");
-        return false;
+        alert("El formato del correo es incorrecto.");
+        return;
     }
 
     const [usuarioCorreo, dominioIngresado] = partes;
 
     if (dominioIngresado !== dominioCorrecto) {
         alert("El correo debe terminar en @" + dominioCorrecto);
-        return false;
+        return;
     }
 
-    // Validar caracteres en la parte local del correo
     const regexCorreo = /^[a-zA-Z0-9._-]+$/;
     if (!regexCorreo.test(usuarioCorreo)) {
-        alert("El correo contiene caracteres inválidos. Solo se permiten letras, números, puntos, guiones y guiones bajos.");
-        return false;
+        alert("El correo contiene caracteres inválidos.");
+        return;
     }
 
-    // Validar que coincidan contraseñas
     if (contraseña !== confirmar) {
-        alert("Las contraseñas no coinciden. Por favor, verifique.");
-        return false;
+        alert("Las contraseñas no coinciden.");
+        return;
     }
 
-    // Validar longitud de contraseña
-    if (contraseña.length < 6) {
-        alert("La contraseña debe tener al menos 6 caracteres");
-        return false;
+    if (contraseña.length < 8) {
+        alert("La contraseña debe tener al menos 8 caracteres");
+        return;
     }
 
-    // Validar longitud de usuario
     if (usuario.length < 3 || usuario.length > 50) {
         alert("El usuario debe tener entre 3 y 50 caracteres");
-        return false;
+        return;
     }
 
     // Mostrar loader
@@ -248,42 +142,140 @@ async function RegistroCuenta() {
     spanTexto.textContent = 'Registrando...';
 
     try {
-        // Enviar solicitud a la API pública
+        // 1. Enviar solicitud de registro a la API
         const response = await fetch('/api/registro', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ usuario, correo, contrasena: contraseña })
+        });
+
+        const data = await response.json();
+
+        if (!data.exitoso) {
+            alert('Error: ' + (data.error || 'No se pudo registrar'));
+            return;
+        }
+
+        const idUsuario = data.idUsuario;
+        console.log('✅ Usuario registrado con ID:', idUsuario);
+
+        // 2. Generar código de validación
+        spanTexto.textContent = 'Generando código...';
+
+        const respCodigo = await fetch('/api/generar-codigo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idUsuario: idUsuario })
+        });
+
+        const dataCodigo = await respCodigo.json();
+
+        if (!dataCodigo.exitoso) {
+            alert('Error generando código: ' + (dataCodigo.error || 'Intente de nuevo'));
+            return;
+        }
+
+        console.log('📧 Código generado (dev mode):', dataCodigo.codigo);
+
+        // 3. Guardar idUsuario en sessionStorage
+        sessionStorage.setItem('idUsuarioRegistro', idUsuario);
+
+        // 4. Mostrar modal para ingreso de código
+        MostrarModalCodigo();
+
+    } catch (error) {
+        console.error('Error en registro:', error);
+        alert('Error al conectar con el servidor. Intenta más tarde.');
+    } finally {
+        btnRegistrar.disabled = false;
+        spanTexto.textContent = textoOriginal;
+    }
+}
+
+/* ========================================
+   PASO 2: VALIDAR CÓDIGO INGRESADO
+======================================== */
+
+async function ValidarCodigo() {
+    const codigo = document.getElementById("Codigo").value.trim();
+    const intentosTexto = document.getElementById('intentosModal');
+    const inputCodigo = document.getElementById("Codigo");
+    const btnValidar = document.getElementById('btnValidarCodigo');
+    const idUsuario = sessionStorage.getItem('idUsuarioRegistro'); // <--- AQUÍ OBTIENE EL ID
+
+    if (!codigo) {
+        alert("Por favor, ingrese el código de seguridad.");
+        return;
+    }
+
+    if (codigo.length !== 8 || !/^\d+$/.test(codigo)) {
+        alert("El código debe tener exactamente 8 dígitos numéricos.");
+        return;
+    }
+
+    // ✅ PREVENIR EL NULL: Si se perdió el ID, mostrar error claro
+    if (!idUsuario) {
+        alert("Error de sesión: No se encontró tu ID de usuario. Por favor, cierra este modal e intenta registrarte de nuevo.");
+        return;
+    }
+
+    btnValidar.disabled = true;
+    btnValidar.textContent = 'Validando...';
+
+    try {
+        const response = await fetch('/api/validar-codigo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                usuario: usuario,
-                correo: correo,
-                contrasena: contraseña
+                idUsuario: idUsuario, // <--- AQUÍ YA NO ES NULL
+                codigo: codigo
             })
         });
 
         const data = await response.json();
 
-        if (data.success) {
-            alert('✅ ' + data.message + '\n\nAhora inicia sesión con tus credenciales.');
-            // Limpiar formulario
+        if (data.exitoso) {
+            CerrarModal(false);
+            alert('✅ ' + data.mensaje + '\n\nAhora puedes iniciar sesión.');
+            
+            // Limpiar formulario y sesión
             document.getElementById("Usuario").value = '';
             document.getElementById("Correo").value = '';
             document.getElementById("Contraseña").value = '';
             document.getElementById("ConfirmarContraseña").value = '';
+            sessionStorage.removeItem('idUsuarioRegistro');
             
-            // Redirigir a login después de 2 segundos
+            // Redirigir a login
             setTimeout(() => {
                 window.location.href = '../InicioSesion/index.html';
             }, 2000);
         } else {
-            alert('❌ Error: ' + data.error);
+            // Código inválido
+            intentosTexto.style.color = '#e74c3c';
+            
+            if (data.intentosRestantes !== undefined) {
+                intentosTexto.textContent = 'Código incorrecto. Intentos restantes: ' + data.intentosRestantes;
+                
+                if (data.intentosRestantes === 0) {
+                    inputCodigo.disabled = true;
+                    btnValidar.disabled = true;
+                    setTimeout(() => { CerrarModal(true); inputCodigo.disabled = false; btnValidar.disabled = false; }, 3000);
+                    return;
+                }
+            } else {
+                intentosTexto.textContent = data.error || 'Código incorrecto o expirado.';
+            }
+            
+            inputCodigo.value = '';
+            inputCodigo.focus();
         }
     } catch (error) {
-        console.error('Error en registro:', error);
-        alert('❌ Error al conectar con el servidor. Intenta más tarde.');
+        console.error('Error validando código:', error);
+        alert('Error al validar código. Intenta más tarde.');
     } finally {
-        // Restaurar estado del botón
-        btnRegistrar.disabled = false;
-        spanTexto.textContent = textoOriginal;
+        if (!btnValidar.disabled) { // Solo restaurar si no está bloqueado por intentos
+            btnValidar.disabled = false;
+            btnValidar.textContent = 'Validar Código';
+        }
     }
 }
