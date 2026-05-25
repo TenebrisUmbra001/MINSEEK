@@ -36,7 +36,40 @@
       </button>
     </div>
     <div class="sidebar-scroll" id="sidebarScroll"></div>
-   <div class="Usuario"><img src="" alt="foto de usuario"> Nombre de usuario <div class="Opciones"> <img src="" alt="icono de opciones"> </div> </div>
+    <div class="Usuario" id="userSection">
+      <img id="userAvatar" src="" alt="foto de usuario" style="display:none;">
+      <svg id="userAvatarDefault" class="avatar-default" viewBox="0 0 24 24">
+        <circle cx="12" cy="8" r="4" />
+        <path d="M20 21a8 8 0 1 0-16 0" />
+      </svg>
+      <span id="userName">Cargando...</span>
+      <div class="Opciones" id="optionsBtn" title="Opciones">
+        <svg viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="3" />
+          <path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+        <div class="options-dropdown" id="optionsDropdown">
+          <button class="dropdown-item" id="btnAjustes">
+            <svg viewBox="0 0 24 24">
+              <path
+                d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+            Ajustes
+          </button>
+          <div class="dropdown-divider"></div>
+          <button class="dropdown-item logout-item" id="btnLogout">
+            <svg viewBox="0 0 24 24">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            Desconectarse
+          </button>
+        </div>
+      </div>
+    </div>
     <div class="sidebar-footer">
       <p>&copy; 2026 CCR MININT Pinar del Rio. Todos los derechos reservados.</p>
     </div>
@@ -78,7 +111,8 @@
           accept=".pdf,.doc,.docx,.txt,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.rtf,.csv,.md,.json,.xml,.html,.htm,.png,.jpg,.jpeg,.gif,.bmp,.webp" />
         <button class="btn-attach" id="attachBtn" title="Adjuntar documentos (máx. 10)">
           <svg viewBox="0 0 24 24">
-            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+            <path
+              d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
           </svg>
         </button>
         <input type="text" id="userInput" placeholder="Escribe tu mensaje..." autocomplete="off" />
@@ -92,8 +126,48 @@
       <div class="input-hint">Enter para enviar &middot; Modelo ejecutándose en infraestructura local</div>
     </div>
   </div>
+  <!-- ── Modal de Ajustes ── -->
+  <div class="modal-overlay" id="settingsModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Ajustes de Cuenta</h3>
+        <button class="modal-close" id="closeModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="settingsForm">
+          <div class="form-group avatar-group">
+            <div class="avatar-edit" id="avatarEditPreview">
+              <img id="modalAvatarPreview" src="" alt="" style="display:none;">
+              <svg id="modalAvatarDefault" class="avatar-default" viewBox="0 0 24 24">
+                <circle cx="12" cy="8" r="4" />
+                <path d="M20 21a8 8 0 1 0-16 0" />
+              </svg>
+              <div class="avatar-overlay"><svg viewBox="0 0 24 24">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                  <circle cx="12" cy="13" r="4" />
+                </svg></div>
+            </div>
+            <input type="file" id="modalFileAvatar" accept="image/*" style="display:none;">
+            <button type="button" class="btn-change-photo" id="btnChangePhoto">Cambiar foto</button>
+          </div>
 
+          <div class="form-group">
+            <label for="modalName">Nombre de usuario</label>
+            <input type="text" id="modalName" placeholder="Tu nombre">
+          </div>
+
+          <div class="form-group">
+            <label for="modalPassword">Nueva contraseña</label>
+            <input type="password" id="modalPassword" placeholder="Dejar vacío para no cambiar">
+          </div>
+
+          <button type="submit" class="btn-save-settings">Guardar Cambios</button>
+        </form>
+      </div>
+    </div>
+  </div>
   <script src="index.js"></script>
+
 </body>
 
 </html>

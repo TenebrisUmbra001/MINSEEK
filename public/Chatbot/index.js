@@ -10,6 +10,7 @@ var sendBtn = document.getElementById('sendBtn');
 var fileInput = document.getElementById('fileInput');
 var attachBtn = document.getElementById('attachBtn');
 var filePreviewList = document.getElementById('filePreviewList');
+var btnLogoutGear = document.getElementById('btnLogoutGear');
 
 var selectedFiles = []; 
 var MAX_FILE_SIZE = 50 * 1024 * 1024;
@@ -82,6 +83,210 @@ function renderFilePreviews() {
 
 function clearSelectedFiles() { selectedFiles = []; fileInput.value = ''; filePreviewList.innerHTML = ''; }
 
+/* ═══════════════════════════════════════
+   USUARIO: Carga, Ajustes y Desconexión
+   ═══════════════════════════════════════ */
+
+var optionsBtn = document.getElementById('optionsBtn');
+var optionsDropdown = document.getElementById('optionsDropdown');
+var btnLogout = document.getElementById('btnLogout');
+var btnAjustes = document.getElementById('btnAjustes');
+var settingsModal = document.getElementById('settingsModal');
+var closeModalBtn = document.getElementById('closeModalBtn');
+var btnChangePhoto = document.getElementById('btnChangePhoto');
+var modalFileAvatar = document.getElementById('modalFileAvatar');
+var settingsForm = document.getElementById('settingsForm');
+
+// Suponiendo que guardas idUsuario e idConexion en localStorage al hacer Login en InicioSesion/index.html
+// Ejemplo que debes tener en tu login: localStorage.setItem('idUsuario', data.idUsuario); localStorage.setItem('idConexion', data.idConexion);
+var currentUserId = localStorage.getItem('idUsuario') || null;
+var currentConnectionId = localStorage.getItem('idConexion') || null;
+
+// ── Cargar datos del usuario al iniciar ──
+async function loadUserInfo() {
+  var nameEl = document.getElementById('userName');
+  var avatarEl = document.getElementById('userAvatar');
+  var avatarDefault = document.getElementById('userAvatarDefault');
+
+  if (!currentUserId) {
+    nameEl.textContent = 'Usuario';
+    return;
+  }
+
+  try {
+    // Llamada a la ruta pública que redirige a /auth/usuario/:idUsuario
+    var response = await fetch('/api/usuario/' + currentUserId);
+    if (!response.ok) throw new Error('No autenticado');
+
+    var result = await response.json();
+    
+    if (result.exitoso && result.usuario) {
+      var u = result.usuario;
+      nameEl.textContent = u.usuario || u.nombre || 'Usuario';
+      
+      // Rellenar modal
+      document.getElementById('modalName').value = u.usuario || u.nombre || '';
+      
+      // Avatar
+      if (u.foto || u.avatar) {
+        var imgUrl = u.foto || u.avatar;
+        avatarEl.src = imgUrl;
+        avatarEl.style.display = 'block';
+        avatarDefault.style.display = 'none';
+        
+        document.getElementById('modalAvatarPreview').src = imgUrl;
+        document.getElementById('modalAvatarPreview').style.display = 'block';
+        document.getElementById('modalAvatarDefault').style.display = 'none';
+      }
+    } else {
+      nameEl.textContent = 'Usuario';
+    }
+  } catch (err) {
+    nameEl.textContent = 'Usuario';
+    console.warn('No se pudo cargar info del usuario:', err.message);
+  }
+}
+
+// ── Toggle del menú de la rueda ──
+if (optionsBtn) {
+  optionsBtn.querySelector('svg').addEventListener('click', function (e) {
+    e.stopPropagation();
+    optionsDropdown.classList.toggle('open');
+  });
+}
+
+document.addEventListener('click', function (e) {
+  if (optionsDropdown && !optionsBtn.contains(e.target)) {
+    optionsDropdown.classList.remove('open');
+  }
+});
+
+// ── Modal de Ajustes ──
+if (btnAjustes) {
+  btnAjustes.addEventListener('click', function() {
+    optionsDropdown.classList.remove('open');
+    settingsModal.classList.add('open');
+  });
+}
+
+if (closeModalBtn) {
+  closeModalBtn.addEventListener('click', function() {
+    settingsModal.classList.remove('open');
+  });
+}
+
+settingsModal.addEventListener('click', function(e) {
+  if (e.target === settingsModal) settingsModal.classList.remove('open');
+});
+
+// Cambiar foto
+if (btnChangePhoto) {
+  btnChangePhoto.addEventListener('click', function() { modalFileAvatar.click(); });
+}
+document.getElementById('avatarEditPreview').addEventListener('click', function() { modalFileAvatar.click(); });
+
+modalFileAvatar.addEventListener('change', function() {
+  if (modalFileAvatar.files && modalFileAvatar.files[0]) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      document.getElementById('modalAvatarPreview').src = e.target.result;
+      document.getElementById('modalAvatarPreview').style.display = 'block';
+      document.getElementById('modalAvatarDefault').style.display = 'none';
+    };
+    reader.readAsDataURL(modalFileAvatar.files[0]);
+  }
+});
+
+// Guardar Ajustes (Llama a un endpoint que DEBES crear en tu API)
+settingsForm.addEventListener('submit', async function(e) {
+  e.preventDefault();
+  var newName = document.getElementById('modalName').value.trim();
+  var newPassword = document.getElementById('modalPassword').value;
+  var fileInput = document.getElementById('modalFileAvatar');
+
+  if (!currentUserId) return alert('Error: No hay sesión activa.');
+
+  var formData = new FormData();
+  formData.append('idUsuario', currentUserId);
+  if (newName) formData.append('usuario', newName);
+  if (newPassword) formData.append('contrasena', newPassword);
+  if (fileInput.files[0]) formData.append('foto', fileInput.files[0]);
+
+  try {
+    // ⚠️ DEBES CREAR ESTA RUTA EN TU API PÚBLICA Y PRIVADA
+    var response = await fetch('/api/usuario/actualizar', {
+      method: 'POST',
+      body: formData
+    });
+    
+    var result = await response.json();
+    if (response.ok && result.exitoso) {
+      // Actualizar UI
+      document.getElementById('userName').textContent = newName;
+      if (result.fotoUrl) {
+        document.getElementById('userAvatar').src = result.fotoUrl;
+        document.getElementById('userAvatar').style.display = 'block';
+        document.getElementById('userAvatarDefault').style.display = 'none';
+      }
+      document.getElementById('modalPassword').value = '';
+      settingsModal.classList.remove('open');
+    } else {
+      alert(result.error || 'Error al guardar');
+    }
+  } catch (err) {
+    alert('Error de conexión al guardar ajustes');
+  }
+});
+
+// ── Desconectarse ──
+async function logout() {
+  optionsDropdown.classList.remove('open');
+
+  var overlay = document.createElement('div');
+  overlay.className = 'logout-overlay';
+  overlay.innerHTML = '<div class="logout-box"><p>Desconectando...</p><div class="spinner"></div></div>';
+  document.body.appendChild(overlay);
+
+  try {
+    if (!currentConnectionId) throw new Error('No hay idConexion');
+    
+    // Llama al endpoint de tu API Pública
+    var response = await fetch('/api/logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idConexion: currentConnectionId })
+    });
+
+    if (response.ok) {
+      localStorage.removeItem('idUsuario');
+      localStorage.removeItem('idConexion');
+      // Redirigir al inicio de sesión
+      window.location.replace('/');
+    } else {
+      throw new Error('Error al desconectarse');
+    }
+  } catch (err) {
+    console.error('Error en logout:', err);
+    overlay.remove();
+    var errDiv = document.createElement('div');
+    errDiv.className = 'message error';
+    errDiv.textContent = 'No se pudo cerrar sesión. Intenta de nuevo.';
+    chatContainer.appendChild(errDiv);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+}
+
+if (btnLogout) {
+  btnLogout.addEventListener('click', logout);
+}
+
+// ── Ejecutar al cargar ──
+loadUserInfo();
+
+/* ═══════════════════════════════════════
+   CHAT: Envío y Streaming
+   ═══════════════════════════════════════ */
+
 async function sendMessage() {
   var text = userInput.value.trim();
   var hasFiles = selectedFiles.length > 0;
@@ -137,4 +342,8 @@ function renderThinking(div, full) { var tO = '思索', tC = ''; var depth = 0, 
 sendBtn.addEventListener('click', sendMessage);
 userInput.addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
 window.addEventListener('resize', function() { if (!isMobile()) { sidebar.classList.remove('open'); sidebarOverlay.style.display = 'none'; sidebarOverlay.classList.remove('visible'); sidebar.classList.toggle('collapsed', !sidebarOpen); updateToggleIcon(); } else sidebar.classList.remove('collapsed'); });
-loadHistory(); userInput.focus();
+
+// ── Inicialización ──
+loadHistory(); 
+loadUserInfo(); 
+userInput.focus();

@@ -1058,3 +1058,166 @@ body {
 @media (max-width: 768px) {
   .message.doc-message { max-width: 92%; }
 }
+/* ── Sección Usuario ── */
+.Usuario {
+  display: flex;
+  align-items: center;
+  padding: 12px 14px;
+  border-top: 1px solid rgba(255, 255, 255, .06);
+  flex-shrink: 0;
+  gap: 10px;
+  position: relative;
+}
+
+.Usuario img#userAvatar {
+  width: 32px; height: 32px; border-radius: 50%; object-fit: cover;
+  border: 1.5px solid rgba(46, 204, 113, .25); flex-shrink: 0;
+}
+
+.avatar-default {
+  width: 32px; height: 32px; flex-shrink: 0; fill: none; stroke: rgba(255, 255, 255, .5);
+  stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; border-radius: 50%;
+  background: rgba(255, 255, 255, .06); border: 1.5px solid rgba(46, 204, 113, .2);
+}
+
+.Usuario span#userName {
+  flex: 1; font-size: .75rem; font-weight: 500; color: rgba(255, 255, 255, .7);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+
+.Opciones {
+  position: relative; flex-shrink: 0;
+}
+
+.Opciones > svg {
+  width: 18px; height: 18px; fill: none; stroke: rgba(255, 255, 255, .35); stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round; cursor: pointer; padding: 4px; border-radius: 6px;
+  transition: all .2s ease;
+}
+
+.Opciones > svg:hover {
+  color: rgba(255, 255, 255, .8); stroke: rgba(255, 255, 255, .8); background: rgba(255, 255, 255, .06);
+  transform: rotate(45deg);
+}
+
+/* ── Dropdown ── */
+.options-dropdown {
+  position: absolute; bottom: calc(100% + 8px); right: 0; min-width: 170px;
+  background: rgba(8, 24, 14, .98); border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 10px; padding: 5px; opacity: 0; visibility: hidden;
+  transform: translateY(5px); transition: all .2s ease; z-index: 50;
+  backdrop-filter: blur(12px); box-shadow: 0 8px 30px rgba(0, 0, 0, .5);
+}
+
+.options-dropdown.open { opacity: 1; visibility: visible; transform: translateY(0); }
+
+.dropdown-item {
+  width: 100%; display: flex; align-items: center; gap: 9px; padding: 9px 12px;
+  border: none; border-radius: 7px; background: transparent; color: rgba(255, 255, 255, .65);
+  font-size: .73rem; font-weight: 400; cursor: pointer; transition: all .15s ease; font-family: inherit;
+}
+
+.dropdown-item:hover { background: rgba(255, 255, 255, .06); color: #fff; }
+.dropdown-item.logout-item:hover { background: rgba(220, 50, 50, .1); color: rgba(255, 120, 120, .95); }
+
+.dropdown-item svg {
+  width: 25px; height: 25px; fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;
+}
+
+.dropdown-divider { height: 1px; background: rgba(255, 255, 255, .08); margin: 4px 8px; }
+
+/* ── Modal ── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(2, 8, 16, .85); z-index: 9999;
+  display: flex; align-items: center; justify-content: center; opacity: 0; visibility: hidden;
+  transition: all .3s ease; backdrop-filter: blur(4px);
+}
+
+.modal-overlay.open { opacity: 1; visibility: visible; }
+
+.modal-content {
+  background: linear-gradient(160deg, rgba(5, 20, 10, .98), rgba(3, 11, 30, .98));
+  border: 1px solid rgba(255, 255, 255, .1); border-radius: 16px; width: 90%; max-width: 420px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .6); transform: translateY(20px); transition: transform .3s ease;
+}
+
+.modal-overlay.open .modal-content { transform: translateY(0); }
+
+.modal-header {
+  display: flex; justify-content: space-between; align-items: center; padding: 18px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
+}
+
+.modal-header h3 { font-size: .95rem; font-weight: 600; color: #fff; margin: 0; }
+
+.modal-close {
+  background: none; border: none; color: rgba(255, 255, 255, .4); font-size: 1.4rem;
+  cursor: pointer; transition: color .2s; line-height: 1;
+}
+
+.modal-close:hover { color: #fff; }
+
+.modal-body { padding: 24px; }
+
+.form-group { margin-bottom: 20px; }
+.form-group label { display: block; font-size: .72rem; font-weight: 500; color: rgba(255, 255, 255, .5); margin-bottom: 8px; }
+
+.form-group input[type="text"], .form-group input[type="password"] {
+  width: 100%; height: 40px; background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 8px; padding: 0 12px; color: #fff; font-size: .8rem; outline: none; transition: border .2s;
+}
+
+.form-group input:focus { border-color: rgba(46, 204, 113, .5); }
+
+.avatar-group { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 28px; }
+
+.avatar-edit {
+  width: 80px; height: 80px; position: relative; cursor: pointer; border-radius: 50%; overflow: hidden;
+  border: 2px solid rgba(46, 204, 113, .3);
+}
+
+.avatar-edit img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-edit .avatar-default { width: 100%; height: 100%; border: none; }
+
+.avatar-overlay {
+  position: absolute; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center;
+  justify-content: center; opacity: 0; transition: opacity .2s;
+}
+
+.avatar-edit:hover .avatar-overlay { opacity: 1; }
+
+.avatar-overlay svg { width: 24px; height: 24px; stroke: #fff; fill: none; stroke-width: 2; }
+
+.btn-change-photo {
+  background: none; border: 1px dashed rgba(255,255,255,.2); color: rgba(255,255,255,.5);
+  padding: 5px 12px; border-radius: 6px; font-size: .68rem; cursor: pointer; transition: all .2s;
+}
+
+.btn-change-photo:hover { border-color: rgba(46, 204, 113, .5); color: #fff; }
+
+.btn-save-settings {
+  width: 100%; height: 40px; background: linear-gradient(135deg, #0d6b3a, #0a4a7a); border: none;
+  border-radius: 8px; color: #fff; font-size: .8rem; font-weight: 600; cursor: pointer; transition: all .2s;
+}
+
+.btn-save-settings:hover { box-shadow: 0 4px 15px rgba(46, 204, 113, .3); transform: translateY(-1px); }
+
+/* ── Logout overlay ── */
+.logout-overlay {
+  position: fixed; inset: 0; background: rgba(2, 8, 16, .95); z-index: 10000;
+  display: flex; align-items: center; justify-content: center; animation: fade-in .3s ease;
+}
+
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.logout-box { text-align: center; padding: 40px; }
+.logout-box p { font-size: .9rem; color: rgba(255, 255, 255, .6); margin-top: 14px; }
+
+.logout-box .spinner {
+  width: 28px; height: 28px; border: 3px solid rgba(255, 255, 255, .1);
+  border-top-color: rgba(46, 204, 113, .7); border-radius: 50%;
+  animation: spin .7s linear infinite; margin: 20px auto 0;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
