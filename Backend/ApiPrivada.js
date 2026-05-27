@@ -11,42 +11,32 @@ const app = express();
 const PORT = process.env.PORT ? Number(process.env.PORT) : 6969;
 const OLLAMA_BASE = process.env.OLLAMA_BASE || 'http://localhost:11434';
 
-const log = {
-  info: (...args) => console.log(new Date().toISOString(), 'ℹ️', ...args),
-  warn: (...args) => console.warn(new Date().toISOString(), '⚠️', ...args),
-  error: (...args) => console.error(new Date().toISOString(), '❌', ...args)
-};
+// ============================================================================
+// Model manager centralizado (usa Ollama local + Groq como opción remota)
+// ============================================================================
+const modelManager = require('./modelManager');
+const {
+  usarModelo,
+  usarGroq,
+  obtenerYAdquirirModelo,
+  cerrarModelo,
+  calcularNumCtx,
+  validarYAdjustarNumCtx,
+  modelLimiters,
+  modelos
+} = modelManager;
+
+const log = modelManager.log;
 
 // ============================================================================
 // CONFIGURACIÓN OPTIMIZADA DE MODELOS (Basado en tu Ollama List)
+// Nota: la lista de modelos se mantiene en modelManager; aquí solo alias y límites lógicos.
 // ============================================================================
-const modelos = {
-  router: ["qwen2.5:1.5b"], // Rápido y barato para clasificar
-  
-  // ⚡ Consultas generales y Chat normal (Rápidos)
-  consulta_rapida: ["qwen2.5:3b", "llama3.2:1b", "phi3:mini"], 
-  
-  // 📄 LECTURA Y ANÁLISIS DE DOCUMENTOS (¡CRUCIAL! Usar Qwen, NUNCA DeepSeek para esto)
-  resumen: ["qwen2.5:14b", "qwen2.5:3b"], // El de 14B entiende perfecto, el de 3B es el respaldo rápido
-  
-  // ✍️ Escritura creativa y redacción formal
-  redaccion: ["qwen2.5:14b", "llama3.1:8b"], 
-  
-  // 🧠 Razonamiento lógico, matemáticas y problemas complejos
-  razonamiento: ["deepseek-r1:7b", "deepseek-r1:14b"], 
-  
-  // 💻 Código y programación
-  codigo: ["codeqwen:7b", "qwen2.5:3b"], // Qwen 3B como respaldo si CodeQwen está lleno
-  
-  // 🖼️ Imágenes
-  multimodal: ["llava:7b", "llava:13b"]
-};
-
 const modelLimits = {
-  "qwen2.5:1.5b": 4, "phi3:mini": 3, "llama3.2:1b": 3, // Router y rápidos: pueden correr varios a la vez
+  "qwen2.5:1.5b": 4, "phi3:mini": 3, "llama3.2:1b": 3,
   "qwen2.5:3b": 2, "deepseek-r1:1.5b": 2,
   "llama3.1:8b": 1, "deepseek-r1:7b": 1, "codeqwen:7b": 1,
-  "qwen2.5:14b": 1, "deepseek-r1:14b": 1, // Modelos pesados: estrictamente 1 a la vez para no matar la RAM
+  "qwen2.5:14b": 1, "deepseek-r1:14b": 1,
   "llava:7b": 1, "llava:13b": 1, "starcoder2:3b": 1
 };
 
@@ -58,24 +48,13 @@ const aliasCategoria = {
 };
 
 // ============================================================================
-// LÍMITES REALES DE CONTEXTO POR MODELO (Ollama default)
+// LÍMITES REALES DE CONTEXTO POR MODELO (delegado a modelManager)
 // ============================================================================
-const maxCtxPorModelo = {
-  "qwen2.5:1.5b": 32768,
-  "phi3:mini": 3840,
-  "deepseek-r1:1.5b": 8192,
-  "llama3.2:1b": 8192,
-  "qwen2.5:3b": 32768,
-  "llama3.1:8b": 8192,
-  "deepseek-r1:7b": 16384,
-  "deepseek-r1:14b": 16384,
-  "qwen2.5:14b": 32768, // ¡Este lee documentos gigantes rapidísimo!
-  "codeqwen:7b": 16384,
-  "starcoder2:3b": 16384,
-  "llava:7b": 4096,
-  "llava:13b": 4096
-};
+const maxCtxPorModelo = modelManager.maxCtxPorModelo || {};
 
+// ============================================================================
+// MIDDLEWARES Y DIRECTORIOS
+// ============================================================================
 app.use(express.json());
 
 const allowedExtensions = ['.pdf', '.doc', '.docx', '.txt', '.md', '.csv', '.json', '.xml', '.html', '.htm', '.rtf', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'];
@@ -97,26 +76,36 @@ var uploadDocs = multer({
   }
 });
 
-class ConcurrencyLimiter {
-  constructor(limit) { this.limit = limit; this.running = 0; this.queue = []; }
-  acquire() { return new Promise((resolve) => { if (this.running < this.limit) { this.running++; resolve(); } else { this.queue.push(resolve); } }); }
-  tryAcquire() { if (this.running < this.limit) { this.running++; return true; } return false; }
-  release() { this.running--; if (this.queue.length > 0) { this.running++; this.queue.shift()(); } }
-}
+// ── Directorio para fotos de perfil de usuarios ──
+const usersDir = path.join(__dirname, 'storage', 'users');
+if (!fs.existsSync(usersDir)) fs.mkdirSync(usersDir, { recursive: true });
 
-const modelLimiters = {};
-for (const name in modelLimits) { modelLimiters[name] = new ConcurrencyLimiter(modelLimits[name]); }
+const usersStorage = multer.diskStorage({
+  destination: function (req, file, cb) { cb(null, usersDir); },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const idUsuario = req.body.idUsuario || 'unknown';
+    cb(null, idUsuario + '_' + Date.now() + ext);
+  }
+});
+
+const uploadUserPhoto = multer({
+  storage: usersStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB máximo
+  fileFilter: function (req, file, cb) {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].indexOf(ext) !== -1) {
+      cb(null, true);
+    } else {
+      cb(new Error('Solo se permiten imágenes (jpg, png, gif, webp)'), false);
+    }
+  }
+});
 
 const db = require('./data/db');
 
 function sha256(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
-}
-
-function calcularNumCtx(text, minCtx, maxCtx) {
-  var estimatedTokens = Math.ceil(text.length / 3);
-  var calculatedCtx = estimatedTokens + 1024;
-  return Math.min(Math.max(calculatedCtx, minCtx || 4096), maxCtx || 32768);
 }
 
 function truncarTextoInteligente(texto, maxChars) {
@@ -127,28 +116,13 @@ function truncarTextoInteligente(texto, maxChars) {
   return inicio + '\n\n[... DOCUMENTO TRUNCADO POR EXCEDER EL LÍMITE DE MEMORIA DEL SISTEMA. Se muestra el inicio y el final ...]\n\n' + final;
 }
 
-async function cerrarModelo(nombreModelo) {
-  try {
-    await fetch(`${OLLAMA_BASE}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: nombreModelo, prompt: '', keep_alive: 0 })
-    });
-  } catch (err) { /* ignore */ }
-}
-
-async function obtenerYAdquirirModelo(categoria) {
-  const m = modelos[categoria];
-  if (!m) throw new Error('Categoría no encontrada: ' + categoria);
-  for (const n of m) {
-    if (modelLimiters[n].tryAcquire()) return n;
-  }
-  await modelLimiters[m[0]].acquire();
-  return m[0];
-}
+// ============================================================================
+// FUNCIONES DE RUTEO Y SELECCIÓN (manteniendo tu router como antes)
+// ============================================================================
 
 async function categorizar(prompt) {
-  const modeloRouter = modelos.router[0];
+  // Usa el router definido en modelos (modelManager.modelos.router)
+  const modeloRouter = (modelos && modelos.router && modelos.router[0]) || 'qwen2.5:1.5b';
   const limiter = modelLimiters[modeloRouter];
   await limiter.acquire();
   const controller = new AbortController();
@@ -181,65 +155,9 @@ async function categorizar(prompt) {
   }
 }
 
-function validarYAdjustarNumCtx(modelo, numCtx) {
-  var limiteReal = maxCtxPorModelo[modelo] || 4096;
-  if (numCtx > limiteReal + 50) {
-    log.warn(`⚠️ [CTX] numCtx solicitado (${numCtx}) excede límite de ${modelo} (${limiteReal}). Ajustando a ${limiteReal}.`);
-    return limiteReal;
-  }
-  if (numCtx > limiteReal) {
-    log.info(`ℹ️ [CTX] numCtx (${numCtx}) dentro de tolerancia (+50) para ${modelo}. Ajustando a ${limiteReal}.`);
-    return limiteReal;
-  }
-  return numCtx;
-}
-
-async function usarModelo(categoria, prompt, opts) {
-  opts = opts || {};
-  const modelo = await obtenerYAdquirirModelo(categoria);
-  const limiter = modelLimiters[modelo];
-
-  var numCtx = opts.num_ctx || calcularNumCtx(prompt, 4096, 32768);
-  numCtx = validarYAdjustarNumCtx(modelo, numCtx);
-
-  log.info(`🧠 [MODELO] Categoría: ${categoria} → Modelo: ${modelo} | num_ctx: ${numCtx} | prompt_len: ${prompt.length}`);
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 300000);
-
-  try {
-    const response = await fetch(`${OLLAMA_BASE}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: modelo,
-        messages: [{ role: 'user', content: prompt }],
-        stream: false,
-        keep_alive: 0,
-        options: {
-          num_ctx: numCtx,
-          temperature: opts.temperature !== undefined ? opts.temperature : 0.7
-        }
-      })
-    });
-
-    clearTimeout(timeout);
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error('Error en llamada a modelo: ' + errText);
-    }
-    const data = await response.json();
-    await cerrarModelo(modelo);
-    return data.message?.content || '';
-  } catch (err) {
-    clearTimeout(timeout);
-    await cerrarModelo(modelo);
-    throw err;
-  } finally {
-    limiter.release();
-  }
-}
+// ============================================================================
+// ENDPOINTS
+// ============================================================================
 
 app.get('/health', (req, res) => res.status(200).json({ status: 'OK' }));
 
@@ -250,6 +168,7 @@ app.post('/api/private/execute', async (req, res) => {
     const respuesta = await usarModelo(categoria, prompt);
     return res.status(200).json({ ok: true, categoria, respuesta });
   } catch (error) {
+    log.error('❌ Error en /api/private/execute:', error.message);
     return res.status(500).json({ ok: false, error: 'Error interno' });
   }
 });
@@ -262,19 +181,19 @@ app.post('/chat', async (req, res) => {
   try {
     const { messages } = req.body;
     if (!messages) return res.status(400).json({ error: 'Inválido' });
-    
+
     const ultimoMensaje = messages.filter(m => m.role === 'user').pop();
     const prompt = ultimoMensaje ? ultimoMensaje.content : '';
-    
+
     var totalContent = messages.map(m => m.content || '').join('');
     var categoria;
-    
+
     if (totalContent.length > 3000) {
-      // ✅ CAMBIO CLAVE: Usar "resumen" (qwen2.5:14b o 3b) para documentos. Lee rapidísimo.
+      // Forzar resumen para documentos largos
       categoria = 'resumen';
       log.info(`📄 [STREAM] Documento largo (${totalContent.length} chars) → Forzando resumen (Qwen rápido)`);
-      
-      var LIMITE_ABSOLUTO_CHARS = 50000; 
+
+      var LIMITE_ABSOLUTO_CHARS = 50000;
       if (totalContent.length > LIMITE_ABSOLUTO_CHARS) {
         log.warn(`⚠️ [STREAM] Documento gigante (${totalContent.length} chars). Truncando a ${LIMITE_ABSOLUTO_CHARS} chars.`);
         var charsActuales = 0;
@@ -299,7 +218,7 @@ app.post('/chat', async (req, res) => {
     } else {
       categoria = await categorizar(prompt);
     }
-    
+
     modeloEnUso = await obtenerYAdquirirModelo(categoria);
     limiterEnUso = modelLimiters[modeloEnUso];
 
@@ -355,7 +274,7 @@ app.post('/chat', async (req, res) => {
 
       await cerrarModelo(modeloEnUso);
       res.end();
-      
+
     } catch (fetchErr) {
       clearTimeout(timeout);
       if (fetchErr.name === 'AbortError') {
@@ -381,7 +300,6 @@ app.post('/chat', async (req, res) => {
 // ============================================================================
 // RUTAS DE AUTENTICACIÓN
 // ============================================================================
-
 const moduloUser = require('./moduloUser');
 
 app.post('/auth/register', async (req, res) => {
@@ -482,6 +400,75 @@ app.get('/auth/historial/:idUsuario', (req, res) => {
   }
 });
 
+// ✅ NUEVA: Actualizar datos del usuario (foto, nombre visible, contraseña)
+app.post('/auth/actualizar-usuario', uploadUserPhoto.single('foto'), async (req, res) => {
+  try {
+    const { idUsuario, nombreVisible, contrasena, contrasenaActual } = req.body;
+    if (!idUsuario) {
+      if (req.file && fs.existsSync(req.file.path)) {
+        try { fs.unlinkSync(req.file.path); } catch (e) { }
+      }
+      return res.status(400).json({ exitoso: false, error: 'idUsuario requerido' });
+    }
+
+    let fotoPerfilPath = undefined;
+    if (req.file) {
+      const oldUser = db.prepare('SELECT FotoPerfilPath FROM Usuario WHERE id = ?').get(idUsuario);
+      if (oldUser && oldUser.FotoPerfilPath) {
+        try {
+          if (fs.existsSync(oldUser.FotoPerfilPath)) fs.unlinkSync(oldUser.FotoPerfilPath);
+        } catch (e) {
+          log.warn('⚠️ No se pudo eliminar foto anterior:', e.message);
+        }
+      }
+      fotoPerfilPath = req.file.path;
+    }
+
+    // ✅ Pasar contrasenaActual al módulo
+    const resultado = await moduloUser.actualizarUsuario(idUsuario, {
+      nombreVisible,
+      contrasena,
+      contrasenaActual,   // ✅ NUEVO
+      fotoPerfilPath
+    });
+
+    if (!resultado.exitoso) {
+      if (req.file && fs.existsSync(req.file.path)) {
+        try { fs.unlinkSync(req.file.path); } catch (e) { }
+      }
+      return res.status(400).json(resultado);
+    }
+
+    log.info(`✅ [AUTH] Usuario actualizado: ${idUsuario}`);
+
+    return res.status(200).json({
+      exitoso: true,
+      mensaje: resultado.mensaje,
+      usuario: resultado.usuario
+    });
+  } catch (error) {
+    log.error('❌ Error en /auth/actualizar-usuario:', error.message);
+    if (req.file && fs.existsSync(req.file.path)) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { }
+    }
+    return res.status(500).json({ exitoso: false, error: 'Error al actualizar usuario' });
+  }
+});
+
+// ✅ NUEVA: Servir foto de perfil del usuario
+app.get('/auth/usuario-foto/:idUsuario', (req, res) => {
+  try {
+    const usuario = db.prepare('SELECT FotoPerfilPath FROM Usuario WHERE id = ?').get(req.params.idUsuario);
+    if (usuario && usuario.FotoPerfilPath && fs.existsSync(usuario.FotoPerfilPath)) {
+      return res.sendFile(path.resolve(usuario.FotoPerfilPath));
+    }
+    return res.status(404).send('Foto no encontrada');
+  } catch (err) {
+    log.error('❌ Error sirviendo foto de usuario:', err.message);
+    return res.status(500).send('Error');
+  }
+});
+
 // ============================================================================
 // RUTAS DE DOCUMENTOS
 // ============================================================================
@@ -497,10 +484,10 @@ app.post('/api/private/upload', uploadDocs.array('archivos', 10), async function
         var fileHash = sha256(buffer);
         var existente = db.prepare('SELECT id, nombre, path FROM documentos WHERE hash = ? LIMIT 1').get(fileHash);
         if (existente) {
-          try { fs.unlinkSync(file.path); } catch (e) {}
+          try { fs.unlinkSync(file.path); } catch (e) { }
           log.info('📄 [DOC] Reutilizado:', existente.nombre);
           var contenidoReutilizado = '';
-          try { var rowReutilizado = db.prepare('SELECT contenido FROM documentos WHERE id = ?').get(existente.id); contenidoReutilizado = rowReutilizado ? (rowReutilizado.contenido || '') : ''; } catch (e) {}
+          try { var rowReutilizado = db.prepare('SELECT contenido FROM documentos WHERE id = ?').get(existente.id); contenidoReutilizado = rowReutilizado ? (rowReutilizado.contenido || '') : ''; } catch (e) { }
           resultados.push({ ok: true, reused: true, docId: existente.id, nombre: existente.nombre, tamaño: file.size, contenido: contenidoReutilizado });
           continue;
         }
@@ -524,7 +511,7 @@ app.post('/api/private/upload', uploadDocs.array('archivos', 10), async function
         resultados.push({ ok: true, reused: false, docId: id, nombre: file.originalname, tamaño: file.size, contenido: contenidoExtraido });
       } catch (fileErr) {
         log.error('❌ [DOC] Error procesando archivo', file && file.originalname, fileErr && fileErr.message);
-        try { if (file && file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path); } catch (e) {}
+        try { if (file && file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path); } catch (e) { }
         resultados.push({ ok: false, nombre: file ? file.originalname : 'unknown', error: fileErr.message || 'Error interno' });
       }
     }
@@ -544,7 +531,7 @@ app.get('/api/private/documents', function (req, res) {
     } catch (dbErr) {
       log.warn('⚠️ [DOCS] No se pudo leer tabla documentos, listando desde filesystem:', dbErr && dbErr.message);
       var d = [];
-      fs.readdirSync(docsDir).forEach(f => { try { var s = fs.statSync(path.join(docsDir, f)); if (s.isFile()) d.push({ nombre: f, tamaño: s.size }); } catch(e){} });
+      fs.readdirSync(docsDir).forEach(f => { try { var s = fs.statSync(path.join(docsDir, f)); if (s.isFile()) d.push({ nombre: f, tamaño: s.size }); } catch (e) { } });
       return res.status(200).json({ ok: true, documentos: d });
     }
   } catch (err) {
@@ -566,34 +553,39 @@ app.post('/api/private/ask-doc', async function (req, res) {
       return res.status(400).json({ ok: false, error: 'El documento no tiene contenido legible extraído. Probá subirlo en formato .pdf, .docx o .txt' });
     }
 
-    var MAX_CHARS_DOCUMENTO = 45000; 
+    var MAX_CHARS_DOCUMENTO = 45000;
     if (texto.length > MAX_CHARS_DOCUMENTO) {
       log.warn(`⚠️ [ASK-DOC] Documento muy largo (${texto.length} chars). Truncando a ${MAX_CHARS_DOCUMENTO}.`);
       texto = truncarTextoInteligente(texto, MAX_CHARS_DOCUMENTO);
     }
 
     var prompt = 'Eres un asistente experto. Usa EXACTAMENTE el siguiente documento para responder. Si la respuesta no está en el documento, decilo claramente.\n\nDOCUMENTO:\n' + texto + '\n\nPREGUNTA:\n' + pregunta + '\n\nRESPONDE SOLO BASADO EN EL DOCUMENTO.';
+
     var estimatedTokens = Math.ceil(prompt.length / 3);
     var numCtx = Math.min(Math.max(estimatedTokens + 1024, 4096), 32768);
-    log.info('📣 [ASK-DOC] num_ctx=', numCtx, 'prompt_len=', prompt.length);
-    var respuesta;
+    numCtx = validarYAdjustarNumCtx('qwen2.5:14b', numCtx);
+
+    // Intentamos Groq primero (mejor para documentos grandes). Si falla, fallback a Ollama local.
+    let respuesta;
     try {
-      respuesta = await usarModelo('resumen', prompt, { num_ctx: numCtx });
-    } catch (modelErr) {
-      log.error('❌ Error llamando al modelo en /ask-doc:', modelErr && modelErr.message);
-      return res.status(500).json({ ok: false, error: 'Error al procesar la pregunta con el modelo' });
+      respuesta = await usarGroq(prompt, 'llama-3.3-70b-versatile', { temperature: 0.0, max_tokens: 2048 });
+    } catch (e) {
+      log.warn('Groq falló, usando modelo local Ollama:', e.message);
+      respuesta = await usarModelo('resumen', prompt, { num_ctx: numCtx, temperature: 0.0 });
     }
-    return res.status(200).json({ ok: true, respuesta: respuesta, docNombre: row.nombre });
+
+    return res.status(200).json({ ok: true, respuesta });
   } catch (err) {
     log.error('❌ Error en /api/private/ask-doc:', err && err.message);
     return res.status(500).json({ ok: false, error: err.message || 'Error interno' });
   }
 });
 
-app.use(function (err, req, res, next) {
-  if (err && (err.code === 'LIMIT_FILE_SIZE' || err.code === 'LIMIT_UNEXPECTED_FILE' || err.name === 'MulterError')) return res.status(400).json({ ok: false, error: err.message });
-  if (err) return res.status(400).json({ ok: false, error: err.message });
-  next();
+// ============================================================================
+// INICIO DEL SERVIDOR
+// ============================================================================
+app.listen(PORT, () => {
+  log.info(`🚀 ApiPrivada escuchando en http://localhost:${PORT}`);
 });
 
-app.listen(PORT, () => { log.info(`🔒 API Privada corriendo en http://localhost:${PORT}`); });
+module.exports = app;

@@ -20,7 +20,10 @@ const chatLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, message: 'Demasiad
 var uploadLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: 'Demasiadas subidas.', standardHeaders: true, legacyHeaders: false });
 
 var uploadMemory = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
-
+var uploadUserPhoto = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+});
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'InicioSesion', 'index.html')));
 
 const DOMINIO_ZIMBRA = 'mail.das.pdr';
@@ -106,6 +109,78 @@ app.get('/api/usuario/:idUsuario', async (req, res) => {
     return res.status(result.status).json(result.body);
   } catch (error) {
     return res.status(502).json({ error: 'Error servidor' });
+  }
+});
+// ✅ NUEVA: Actualizar datos del usuario (proxy a API Privada)
+app.post('/api/usuario/actualizar', uploadUserPhoto.single('foto'), async (req, res) => {
+  try {
+    const { idUsuario, nombreVisible, contrasena, contrasenaActual } = req.body;
+    if (!idUsuario) return res.status(400).json({ exitoso: false, error: 'idUsuario requerido' });
+
+    var form = new FormData();
+    form.append('idUsuario', idUsuario);
+    if (nombreVisible !== undefined) form.append('nombreVisible', nombreVisible);
+    if (contrasena) form.append('contrasena', contrasena);
+    if (contrasenaActual) form.append('contrasenaActual', contrasenaActual);  // ✅ NUEVO
+    if (req.file) {
+      form.append('foto', req.file.buffer, {
+        filename: req.file.originalname,
+        contentType: req.file.mimetype
+      });
+    }
+
+    var headers = form.getHeaders();
+    if (PRIVATE_API_TOKEN) headers['Authorization'] = 'Bearer ' + PRIVATE_API_TOKEN;
+
+    var response = await fetch(PRIVATE_API_URL + '/auth/actualizar-usuario', {
+      method: 'POST',
+      headers: headers,
+      body: form.getBuffer()
+    });
+
+    var result;
+    try {
+      var text = await response.text();
+      result = JSON.parse(text);
+    } catch (e) {
+      result = { exitoso: false, error: 'Respuesta inválida de la API' };
+    }
+
+    if (result.exitoso && result.usuario && result.usuario.FotoPerfilPath) {
+      result.fotoUrl = '/api/usuario-foto/' + idUsuario;
+    }
+
+    return res.status(response.status).json(result);
+  } catch (error) {
+    console.error('Error proxy actualizar usuario:', error.message);
+    return res.status(502).json({ exitoso: false, error: 'Error de conexión al actualizar' });
+  }
+});
+
+// ✅ NUEVA: Proxy para servir fotos de perfil
+app.get('/api/usuario-foto/:idUsuario', async (req, res) => {
+  try {
+    var headers = {};
+    if (PRIVATE_API_TOKEN) headers['Authorization'] = 'Bearer ' + PRIVATE_API_TOKEN;
+
+    var response = await fetch(PRIVATE_API_URL + '/auth/usuario-foto/' + req.params.idUsuario, { headers: headers });
+
+    if (!response.ok) return res.status(404).send('Foto no encontrada');
+
+    var contentType = response.headers.get('content-type');
+    if (contentType) res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+
+    var reader = response.body.getReader();
+    while (true) {
+      var chunk = await reader.read();
+      if (chunk.done) break;
+      res.write(chunk.value);
+    }
+    res.end();
+  } catch (error) {
+    if (!res.headersSent) return res.status(502).send('Error');
+    res.end();
   }
 });
 

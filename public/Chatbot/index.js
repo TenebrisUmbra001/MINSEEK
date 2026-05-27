@@ -1,3 +1,13 @@
+/* ── Protección: Verificar que hay sesión activa ── */
+(function verificarSesion() {
+  var idUsuario = sessionStorage.getItem('idUsuario');
+  var idConexion = sessionStorage.getItem('idConexion');
+  if (!idUsuario || !idConexion) {
+    window.location.replace('/');
+    return;
+  }
+})();
+
 /* ── DOM ── */
 var sidebar = document.getElementById('sidebar');
 var sidebarOverlay = document.getElementById('sidebarOverlay');
@@ -10,7 +20,6 @@ var sendBtn = document.getElementById('sendBtn');
 var fileInput = document.getElementById('fileInput');
 var attachBtn = document.getElementById('attachBtn');
 var filePreviewList = document.getElementById('filePreviewList');
-var btnLogoutGear = document.getElementById('btnLogoutGear');
 
 var selectedFiles = []; 
 var MAX_FILE_SIZE = 50 * 1024 * 1024;
@@ -45,7 +54,6 @@ function formatFileSize(bytes) { if (bytes === 0) return '0 Bytes'; var k = 1024
 
 var docSvg = '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
 
-// NOMBRE UNIFICADO: 'archivos'
 function uploadDocuments(files) {
   return new Promise(function (resolve, reject) {
     var formData = new FormData(); 
@@ -97,10 +105,14 @@ var btnChangePhoto = document.getElementById('btnChangePhoto');
 var modalFileAvatar = document.getElementById('modalFileAvatar');
 var settingsForm = document.getElementById('settingsForm');
 
-// Suponiendo que guardas idUsuario e idConexion en localStorage al hacer Login en InicioSesion/index.html
-// Ejemplo que debes tener en tu login: localStorage.setItem('idUsuario', data.idUsuario); localStorage.setItem('idConexion', data.idConexion);
-var currentUserId = localStorage.getItem('idUsuario') || null;
-var currentConnectionId = localStorage.getItem('idConexion') || null;
+// ✅ sessionStorage — se borra al cerrar la pestaña
+var currentUserId = sessionStorage.getItem('idUsuario') || null;
+var currentConnectionId = sessionStorage.getItem('idConexion') || null;
+
+// ✅ Helper: obtener ID del usuario
+function getUserId() {
+  return sessionStorage.getItem('idUsuario') || currentUserId;
+}
 
 // ── Cargar datos del usuario al iniciar ──
 async function loadUserInfo() {
@@ -108,35 +120,69 @@ async function loadUserInfo() {
   var avatarEl = document.getElementById('userAvatar');
   var avatarDefault = document.getElementById('userAvatarDefault');
 
-  if (!currentUserId) {
+  var userId = getUserId();
+
+  if (!userId) {
     nameEl.textContent = 'Usuario';
     return;
   }
 
+  if (!currentUserId) currentUserId = userId;
+
   try {
-    // Llamada a la ruta pública que redirige a /auth/usuario/:idUsuario
-    var response = await fetch('/api/usuario/' + currentUserId);
+    var response = await fetch('/api/usuario/' + userId);
     if (!response.ok) throw new Error('No autenticado');
 
     var result = await response.json();
-    
+
     if (result.exitoso && result.usuario) {
       var u = result.usuario;
-      nameEl.textContent = u.usuario || u.nombre || 'Usuario';
-      
+
+      // Guardar idUsuario en sessionStorage por si no estaba
+      if (u.id && !sessionStorage.getItem('idUsuario')) {
+        sessionStorage.setItem('idUsuario', u.id);
+        currentUserId = u.id;
+      }
+
+      // Usar NombreVisible, con fallback a NombreUsuario
+      var displayName = (u.NombreVisible && u.NombreVisible !== 'Usuario')
+        ? u.NombreVisible
+        : u.NombreUsuario || 'Usuario';
+      nameEl.textContent = displayName;
+
       // Rellenar modal
-      document.getElementById('modalName').value = u.usuario || u.nombre || '';
-      
+      document.getElementById('modalNombreVisible').value = u.NombreVisible || '';
+
+      // Guardar NombreUsuario en un data-attr para el botón reset
+      var nombreVisibleInput = document.getElementById('modalNombreVisible');
+      if (u.NombreUsuario) {
+        nombreVisibleInput.setAttribute('data-username', u.NombreUsuario);
+      }
+
       // Avatar
-      if (u.foto || u.avatar) {
-        var imgUrl = u.foto || u.avatar;
+      if (u.FotoPerfilPath) {
+        var imgUrl = '/api/usuario-foto/' + userId + '?t=' + Date.now();
+
         avatarEl.src = imgUrl;
         avatarEl.style.display = 'block';
         avatarDefault.style.display = 'none';
-        
+        avatarEl.onerror = function () {
+          avatarEl.style.display = 'none';
+          avatarDefault.style.display = 'block';
+        };
+
         document.getElementById('modalAvatarPreview').src = imgUrl;
         document.getElementById('modalAvatarPreview').style.display = 'block';
         document.getElementById('modalAvatarDefault').style.display = 'none';
+        document.getElementById('modalAvatarPreview').onerror = function () {
+          document.getElementById('modalAvatarPreview').style.display = 'none';
+          document.getElementById('modalAvatarDefault').style.display = 'block';
+        };
+      } else {
+        avatarEl.style.display = 'none';
+        avatarDefault.style.display = 'block';
+        document.getElementById('modalAvatarPreview').style.display = 'none';
+        document.getElementById('modalAvatarDefault').style.display = 'block';
       }
     } else {
       nameEl.textContent = 'Usuario';
@@ -163,32 +209,53 @@ document.addEventListener('click', function (e) {
 
 // ── Modal de Ajustes ──
 if (btnAjustes) {
-  btnAjustes.addEventListener('click', function() {
+  btnAjustes.addEventListener('click', function () {
     optionsDropdown.classList.remove('open');
+    // Resetear sección de contraseña
+    var passFields = document.getElementById('passwordSectionFields');
+    var passToggle = document.getElementById('btnPasswordSection');
+    if (passFields) { passFields.classList.remove('open'); }
+    if (passToggle) { passToggle.classList.remove('active'); }
+    // Limpiar campos de contraseña
+    var cp = document.getElementById('modalCurrentPassword');
+    var np = document.getElementById('modalNewPassword');
+    var cnp = document.getElementById('modalConfirmPassword');
+    if (cp) cp.value = '';
+    if (np) { np.value = ''; np.disabled = true; }
+    if (cnp) { cnp.value = ''; cnp.disabled = true; }
+    var matchHint = document.getElementById('passwordMatchHint');
+    if (matchHint) { matchHint.textContent = ''; matchHint.className = 'form-hint'; }
+    // Refrescar datos
+    loadUserInfo();
     settingsModal.classList.add('open');
   });
 }
 
 if (closeModalBtn) {
-  closeModalBtn.addEventListener('click', function() {
+  closeModalBtn.addEventListener('click', function () {
     settingsModal.classList.remove('open');
   });
 }
 
-settingsModal.addEventListener('click', function(e) {
+settingsModal.addEventListener('click', function (e) {
   if (e.target === settingsModal) settingsModal.classList.remove('open');
 });
 
-// Cambiar foto
+// ── Cambiar foto ──
 if (btnChangePhoto) {
-  btnChangePhoto.addEventListener('click', function() { modalFileAvatar.click(); });
+  btnChangePhoto.addEventListener('click', function () { modalFileAvatar.click(); });
 }
-document.getElementById('avatarEditPreview').addEventListener('click', function() { modalFileAvatar.click(); });
+document.getElementById('avatarEditPreview').addEventListener('click', function () { modalFileAvatar.click(); });
 
-modalFileAvatar.addEventListener('change', function() {
+modalFileAvatar.addEventListener('change', function () {
   if (modalFileAvatar.files && modalFileAvatar.files[0]) {
+    if (modalFileAvatar.files[0].size > 5 * 1024 * 1024) {
+      alert('La imagen no debe superar 5MB.');
+      modalFileAvatar.value = '';
+      return;
+    }
     var reader = new FileReader();
-    reader.onload = function(e) {
+    reader.onload = function (e) {
       document.getElementById('modalAvatarPreview').src = e.target.result;
       document.getElementById('modalAvatarPreview').style.display = 'block';
       document.getElementById('modalAvatarDefault').style.display = 'none';
@@ -197,44 +264,207 @@ modalFileAvatar.addEventListener('change', function() {
   }
 });
 
-// Guardar Ajustes (Llama a un endpoint que DEBES crear en tu API)
-settingsForm.addEventListener('submit', async function(e) {
-  e.preventDefault();
-  var newName = document.getElementById('modalName').value.trim();
-  var newPassword = document.getElementById('modalPassword').value;
-  var fileInput = document.getElementById('modalFileAvatar');
+// ── Botón restablecer nombre visible ──
+var btnResetNombre = document.getElementById('btnResetNombre');
+if (btnResetNombre) {
+  btnResetNombre.addEventListener('click', function () {
+    var nombreVisibleInput = document.getElementById('modalNombreVisible');
+    var username = nombreVisibleInput.getAttribute('data-username') || '';
+    if (username) {
+      nombreVisibleInput.value = username;
+    }
+  });
+}
 
-  if (!currentUserId) return alert('Error: No hay sesión activa.');
+// ── Sección de contraseña: toggle colapsable ──
+var btnPasswordSection = document.getElementById('btnPasswordSection');
+var passwordSectionFields = document.getElementById('passwordSectionFields');
+
+if (btnPasswordSection && passwordSectionFields) {
+  btnPasswordSection.addEventListener('click', function () {
+    var isOpen = passwordSectionFields.classList.contains('open');
+    if (isOpen) {
+      passwordSectionFields.classList.remove('open');
+      btnPasswordSection.classList.remove('active');
+    } else {
+      passwordSectionFields.classList.add('open');
+      btnPasswordSection.classList.add('active');
+    }
+  });
+}
+
+// ── Contraseña actual → habilitar nueva contraseña ──
+var modalCurrentPassword = document.getElementById('modalCurrentPassword');
+var modalNewPassword = document.getElementById('modalNewPassword');
+var modalConfirmPassword = document.getElementById('modalConfirmPassword');
+
+if (modalCurrentPassword) {
+  modalCurrentPassword.addEventListener('input', function () {
+    var hasValue = this.value.trim().length > 0;
+    if (modalNewPassword) modalNewPassword.disabled = !hasValue;
+    if (modalConfirmPassword) modalConfirmPassword.disabled = !hasValue;
+    if (!hasValue) {
+      if (modalNewPassword) modalNewPassword.value = '';
+      if (modalConfirmPassword) modalConfirmPassword.value = '';
+      var matchHint = document.getElementById('passwordMatchHint');
+      if (matchHint) { matchHint.textContent = ''; matchHint.className = 'form-hint'; }
+    }
+  });
+}
+
+// ── Verificar coincidencia de contraseñas nuevas ──
+if (modalConfirmPassword) {
+  modalConfirmPassword.addEventListener('input', function () {
+    var matchHint = document.getElementById('passwordMatchHint');
+    if (!matchHint) return;
+
+    var newPass = modalNewPassword ? modalNewPassword.value : '';
+    var confirmPass = this.value;
+
+    if (confirmPass.length === 0) {
+      matchHint.textContent = '';
+      matchHint.className = 'form-hint';
+    } else if (newPass === confirmPass) {
+      matchHint.textContent = '✓ Las contraseñas coinciden';
+      matchHint.className = 'form-hint match';
+    } else {
+      matchHint.textContent = '✗ Las contraseñas no coinciden';
+      matchHint.className = 'form-hint no-match';
+    }
+  });
+}
+
+// ── Toggle visibilidad contraseña (botones ojo) ──
+document.querySelectorAll('.btn-toggle-password').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var targetId = this.getAttribute('data-target');
+    if (!targetId) return;
+    var input = document.getElementById(targetId);
+    if (!input) return;
+
+    if (input.type === 'password') {
+      input.type = 'text';
+      this.classList.add('showing');
+    } else {
+      input.type = 'password';
+      this.classList.remove('showing');
+    }
+  });
+});
+
+// ── Guardar Ajustes ──
+settingsForm.addEventListener('submit', async function (e) {
+  e.preventDefault();
+
+  var userId = getUserId();
+  if (!userId) {
+    alert('Error: No hay sesión activa. Intenta recargar la página.');
+    return;
+  }
+
+  var newName = document.getElementById('modalNombreVisible').value.trim();
+  if (!newName) {
+    alert('El nombre visible no puede estar vacío.');
+    return;
+  }
 
   var formData = new FormData();
-  formData.append('idUsuario', currentUserId);
-  if (newName) formData.append('usuario', newName);
-  if (newPassword) formData.append('contrasena', newPassword);
-  if (fileInput.files[0]) formData.append('foto', fileInput.files[0]);
+  formData.append('idUsuario', userId);
+  formData.append('nombreVisible', newName);
+
+  // Foto si se seleccionó
+  var avatarInput = document.getElementById('modalFileAvatar');
+  if (avatarInput.files && avatarInput.files[0]) {
+    formData.append('foto', avatarInput.files[0]);
+  }
+
+  // Contraseña: verificar los 3 campos
+  var passFieldsOpen = passwordSectionFields && passwordSectionFields.classList.contains('open');
+  if (passFieldsOpen) {
+    var currentPass = modalCurrentPassword ? modalCurrentPassword.value : '';
+    var newPass = modalNewPassword ? modalNewPassword.value : '';
+    var confirmPass = modalConfirmPassword ? modalConfirmPassword.value : '';
+
+    if (currentPass || newPass || confirmPass) {
+      if (!currentPass) {
+        alert('Debes ingresar tu contraseña actual.');
+        return;
+      }
+      if (!newPass) {
+        alert('Debes ingresar la nueva contraseña.');
+        return;
+      }
+      if (newPass.length < 8) {
+        alert('La nueva contraseña debe tener al menos 8 caracteres.');
+        return;
+      }
+      if (!/[A-Z]/.test(newPass) || !/[a-z]/.test(newPass) || !/[0-9]/.test(newPass)) {
+        alert('La nueva contraseña debe contener mayúsculas, minúsculas y números.');
+        return;
+      }
+      if (newPass !== confirmPass) {
+        alert('La nueva contraseña y la confirmación no coinciden.');
+        return;
+      }
+
+      formData.append('contrasenaActual', currentPass);
+      formData.append('contrasena', newPass);
+    }
+  }
+
+  // Deshabilitar botón
+  var saveBtn = settingsForm.querySelector('.btn-save-settings');
+  var originalText = saveBtn.textContent;
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Guardando...';
 
   try {
-    // ⚠️ DEBES CREAR ESTA RUTA EN TU API PÚBLICA Y PRIVADA
     var response = await fetch('/api/usuario/actualizar', {
       method: 'POST',
       body: formData
     });
-    
+
     var result = await response.json();
+
     if (response.ok && result.exitoso) {
-      // Actualizar UI
+      // Actualizar sidebar
       document.getElementById('userName').textContent = newName;
-      if (result.fotoUrl) {
-        document.getElementById('userAvatar').src = result.fotoUrl;
+
+      // Actualizar foto
+      if (result.fotoUrl || (result.usuario && result.usuario.FotoPerfilPath)) {
+        var newImgUrl = '/api/usuario-foto/' + userId + '?t=' + Date.now();
+        document.getElementById('userAvatar').src = newImgUrl;
         document.getElementById('userAvatar').style.display = 'block';
         document.getElementById('userAvatarDefault').style.display = 'none';
+        document.getElementById('modalAvatarPreview').src = newImgUrl;
+        document.getElementById('modalAvatarPreview').style.display = 'block';
+        document.getElementById('modalAvatarDefault').style.display = 'none';
       }
-      document.getElementById('modalPassword').value = '';
+
+      // Limpiar campos de contraseña
+      if (modalCurrentPassword) modalCurrentPassword.value = '';
+      if (modalNewPassword) { modalNewPassword.value = ''; modalNewPassword.disabled = true; }
+      if (modalConfirmPassword) { modalConfirmPassword.value = ''; modalConfirmPassword.disabled = true; }
+      var matchHint = document.getElementById('passwordMatchHint');
+      if (matchHint) { matchHint.textContent = ''; matchHint.className = 'form-hint'; }
+
+      // Cerrar sección de contraseña
+      if (passwordSectionFields) passwordSectionFields.classList.remove('open');
+      if (btnPasswordSection) btnPasswordSection.classList.remove('active');
+
+      // Limpiar file input
+      avatarInput.value = '';
+
+      // Cerrar modal
       settingsModal.classList.remove('open');
     } else {
-      alert(result.error || 'Error al guardar');
+      alert(result.error || 'Error al guardar los cambios.');
     }
   } catch (err) {
-    alert('Error de conexión al guardar ajustes');
+    alert('Error de conexión al guardar ajustes.');
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = originalText;
   }
 });
 
@@ -248,19 +478,20 @@ async function logout() {
   document.body.appendChild(overlay);
 
   try {
-    if (!currentConnectionId) throw new Error('No hay idConexion');
-    
-    // Llama al endpoint de tu API Pública
+    var connId = sessionStorage.getItem('idConexion') || currentConnectionId;
+    if (!connId) throw new Error('No hay idConexion');
+
     var response = await fetch('/api/logout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idConexion: currentConnectionId })
+      body: JSON.stringify({ idConexion: connId })
     });
 
     if (response.ok) {
-      localStorage.removeItem('idUsuario');
-      localStorage.removeItem('idConexion');
-      // Redirigir al inicio de sesión
+      sessionStorage.removeItem('idUsuario');
+      sessionStorage.removeItem('idConexion');
+      sessionStorage.removeItem('usuario');
+      sessionStorage.removeItem('correo');
       window.location.replace('/');
     } else {
       throw new Error('Error al desconectarse');

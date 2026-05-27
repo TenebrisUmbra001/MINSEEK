@@ -269,7 +269,6 @@ async function registrarUsuario(usuario, correo, contrasena) {
  */
 async function autenticarUsuario(usuario, contrasena, datosConexion = {}) {
   try {
-    // Validación básica de entrada
     if (!usuario || !contrasena) {
       return {
         exitoso: false,
@@ -278,13 +277,12 @@ async function autenticarUsuario(usuario, contrasena, datosConexion = {}) {
       };
     }
 
-    // Buscar usuario usando prepared statement (protegido contra SQL Injection)
+    // ✅ AGREGAR NombreVisible y FotoPerfilPath al SELECT
     const usuarioEnBD = db.prepare(
-      'SELECT id, NombreUsuario, Correo, Password FROM Usuario WHERE NombreUsuario = ? LIMIT 1'
+      'SELECT id, NombreUsuario, Correo, Password, NombreVisible, FotoPerfilPath FROM Usuario WHERE NombreUsuario = ? LIMIT 1'
     ).get(usuario.trim());
 
     if (!usuarioEnBD) {
-      // No devolver información específica sobre si existe el usuario (seguridad)
       log.warn(`⚠️ Intento de login fallido: usuario no encontrado: ${usuario}`);
       return {
         exitoso: false,
@@ -293,7 +291,6 @@ async function autenticarUsuario(usuario, contrasena, datosConexion = {}) {
       };
     }
 
-    // Verificar contraseña usando bcrypt (protegido contra ataques de tiempo)
     const contrasenaValida = await bcrypt.compare(contrasena, usuarioEnBD.Password);
 
     if (!contrasenaValida) {
@@ -305,7 +302,6 @@ async function autenticarUsuario(usuario, contrasena, datosConexion = {}) {
       };
     }
 
-    // Registrar la conexión exitosa en el historial
     const stmt = db.prepare(
       `INSERT INTO HistorialConexion (
         idUsuario, IpOrigen, FechaConexion, FechaDesconexion, EsExitosa
@@ -317,10 +313,8 @@ async function autenticarUsuario(usuario, contrasena, datosConexion = {}) {
       datosConexion.ip || 'desconocida'
     );
 
-    // Obtener el ID de la conexión recién creada
     const idConexion = result.lastInsertRowid;
 
-    // Actualizar última conexión
     db.prepare(
       `UPDATE Usuario SET FechaUltimaConexion = datetime('now'), EstaConectado = 1 WHERE id = ?`
     ).run(usuarioEnBD.id);
@@ -333,7 +327,9 @@ async function autenticarUsuario(usuario, contrasena, datosConexion = {}) {
       idUsuario: usuarioEnBD.id,
       usuario: usuarioEnBD.NombreUsuario,
       correo: usuarioEnBD.Correo,
-      idConexion: idConexion
+      idConexion: idConexion,
+      nombreVisible: usuarioEnBD.NombreVisible,    // ✅ NUEVO
+      fotoPerfilPath: usuarioEnBD.FotoPerfilPath    // ✅ NUEVO
     };
 
   } catch (err) {
@@ -345,6 +341,99 @@ async function autenticarUsuario(usuario, contrasena, datosConexion = {}) {
     };
   }
 }
+
+/**
+ * Actualiza los datos de un usuario (nombre visible, contraseña, foto)
+ */
+async function actualizarUsuario(idUsuario, datos) {
+  try {
+    if (!idUsuario) {
+      return { exitoso: false, error: 'idUsuario requerido' };
+    }
+
+    const usuarioExistente = db.prepare('SELECT id FROM Usuario WHERE id = ?').get(idUsuario);
+    if (!usuarioExistente) {
+      return { exitoso: false, error: 'Usuario no encontrado' };
+    }
+
+    const campos = [];
+    const valores = [];
+
+    // Nombre visible
+    if (datos.nombreVisible !== undefined) {
+      const nombre = datos.nombreVisible.trim();
+      if (nombre.length === 0) {
+        return { exitoso: false, error: 'El nombre visible no puede estar vacío' };
+      }
+      if (nombre.length > 50) {
+        return { exitoso: false, error: 'Nombre visible muy largo (máximo 50 caracteres)' };
+      }
+      campos.push('NombreVisible = ?');
+      valores.push(nombre);
+    }
+
+    // Foto de perfil
+    if (datos.fotoPerfilPath !== undefined) {
+      campos.push('FotoPerfilPath = ?');
+      valores.push(datos.fotoPerfilPath);
+    }
+
+    // Contraseña: REQUIERE contraseña actual
+    if (datos.contrasena && datos.contrasena.trim()) {
+      // ✅ Verificar contraseña actual primero
+      if (!datos.contrasenaActual) {
+        return { exitoso: false, error: 'Debes ingresar tu contraseña actual para cambiarla' };
+      }
+
+      const verificacion = await verificarContrasena(idUsuario, datos.contrasenaActual);
+      if (!verificacion.exitoso) {
+        return { exitoso: false, error: verificacion.error };
+      }
+
+      // Validar nueva contraseña
+      const validPass = validarContrasena(datos.contrasena);
+      if (!validPass.valido) {
+        return { exitoso: false, error: validPass.error };
+      }
+
+      const hashedPassword = await bcrypt.hash(datos.contrasena, 12);
+      campos.push('Password = ?');
+      valores.push(hashedPassword);
+    }
+
+    if (campos.length === 0) {
+      return { exitoso: false, error: 'No hay campos para actualizar' };
+    }
+
+    valores.push(idUsuario);
+
+    const query = `UPDATE Usuario SET ${campos.join(', ')} WHERE id = ?`;
+    const result = db.prepare(query).run(...valores);
+
+    if (result.changes === 0) {
+      return { exitoso: false, error: 'No se pudo actualizar el usuario' };
+    }
+
+    const usuario = db.prepare(
+      `SELECT id, NombreUsuario, Correo, NombreVisible, FotoPerfilPath,
+              EstaConectado, FechaCreacionCuenta, FechaUltimaConexion
+       FROM Usuario WHERE id = ?`
+    ).get(idUsuario);
+
+    log.info(`✅ Usuario actualizado: ${idUsuario} | Campos: ${campos.map(c => c.split('=')[0].trim()).join(', ')}`);
+
+    return {
+      exitoso: true,
+      mensaje: 'Usuario actualizado exitosamente',
+      usuario: usuario
+    };
+  } catch (err) {
+    log.error('❌ Error en actualizarUsuario:', err.message);
+    return { exitoso: false, error: 'Error al actualizar usuario' };
+  }
+}
+
+
 
 /**
  * Genera un código de 8 cifras aleatorio
@@ -568,8 +657,8 @@ function registrarIntentoFallido(usuario, datosConexion = {}) {
 function obtenerInfoUsuario(idUsuario) {
   try {
     const usuario = db.prepare(
-      `SELECT id, NombreUsuario, Correo, EstaConectado, 
-               FechaCreacionCuenta, FechaUltimaConexion
+      `SELECT id, NombreUsuario, Correo, NombreVisible, FotoPerfilPath,
+               EstaConectado, FechaCreacionCuenta, FechaUltimaConexion
         FROM Usuario WHERE id = ? LIMIT 1`
     ).get(idUsuario);
 
@@ -633,6 +722,31 @@ function cerrarSesion(idConexion) {
   }
 }
 
+/**
+ * Verifica si una contraseña en texto plano coincide con la del usuario
+ */
+async function verificarContrasena(idUsuario, contrasenaIngresada) {
+  try {
+    if (!idUsuario || !contrasenaIngresada) {
+      return { exitoso: false, error: 'Parámetros requeridos' };
+    }
+
+    const usuario = db.prepare('SELECT Password FROM Usuario WHERE id = ? LIMIT 1').get(idUsuario);
+    if (!usuario) {
+      return { exitoso: false, error: 'Usuario no encontrado' };
+    }
+
+    const coincide = await bcrypt.compare(contrasenaIngresada, usuario.Password);
+    if (!coincide) {
+      return { exitoso: false, error: 'La contraseña actual es incorrecta' };
+    }
+
+    return { exitoso: true };
+  } catch (err) {
+    log.error('❌ Error en verificarContrasena:', err.message);
+    return { exitoso: false, error: 'Error al verificar contraseña' };
+  }
+}
 // ============================================================================
 // INICIALIZACIÓN
 // ============================================================================
@@ -644,25 +758,20 @@ inicializarTablas();
 // ============================================================================
 
 module.exports = {
-  // Funciones principales
   registrarUsuario,
   autenticarUsuario,
   registrarIntentoFallido,
   obtenerInfoUsuario,
   obtenerHistorialConexiones,
   cerrarSesion,
-
-  // Funciones de validación de código
   generarCodigoValidacion,
   validarCodigoValidacion,
   limpiarCodigosExpirados,
-
-  // Funciones de validación
   validarUsuario,
   validarCorreo,
   validarContrasena,
-
-  // Utilidades
   inicializarTablas,
-  CODIGO_ADMIN
+  CODIGO_ADMIN,
+  actualizarUsuario,
+  verificarContrasena   // ✅ NUEVO
 };
