@@ -28,6 +28,9 @@ const {
 
 const log = modelManager.log;
 
+// ✅ NUEVO: Importar servicio de correo Zimbra
+const emailService = require('./emailService');
+
 // ============================================================================
 // CONFIGURACIÓN OPTIMIZADA DE MODELOS (Basado en tu Ollama List)
 // Nota: la lista de modelos se mantiene en modelManager; aquí solo alias y límites lógicos.
@@ -121,7 +124,6 @@ function truncarTextoInteligente(texto, maxChars) {
 // ============================================================================
 
 async function categorizar(prompt) {
-  // Usa el router definido en modelos (modelManager.modelos.router)
   const modeloRouter = (modelos && modelos.router && modelos.router[0]) || 'qwen2.5:1.5b';
   const limiter = modelLimiters[modeloRouter];
   await limiter.acquire();
@@ -189,7 +191,6 @@ app.post('/chat', async (req, res) => {
     var categoria;
 
     if (totalContent.length > 3000) {
-      // Forzar resumen para documentos largos
       categoria = 'resumen';
       log.info(`📄 [STREAM] Documento largo (${totalContent.length} chars) → Forzando resumen (Qwen rápido)`);
 
@@ -232,7 +233,7 @@ app.post('/chat', async (req, res) => {
     res.setHeader('Connection', 'keep-alive');
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 900000); // 15 minutos
+    const timeout = setTimeout(() => controller.abort(), 900000);
 
     try {
       const response = await fetch(`${OLLAMA_BASE}/api/chat`, {
@@ -318,17 +319,43 @@ app.post('/auth/register', async (req, res) => {
   }
 });
 
-app.post('/auth/generar-codigo', (req, res) => {
+// ✅ MODIFICADA: Ahora genera el código, envía correo por Zimbra y no devuelve el código en JSON
+app.post('/auth/generar-codigo', async (req, res) => {
   try {
     const { idUsuario } = req.body;
     if (!idUsuario) { return res.status(400).json({ exitoso: false, error: 'idUsuario es requerido', codigo: 'CAMPO_FALTANTE' }); }
+
+    // 1. Obtener el correo del usuario
+    const infoUser = moduloUser.obtenerInfoUsuario(idUsuario);
+    if (!infoUser.exitoso || !infoUser.usuario.Correo) {
+      return res.status(404).json({ exitoso: false, error: 'Usuario no encontrado o sin correo registrado' });
+    }
+    const correoDestino = infoUser.usuario.Correo;
+
+    // 2. Generar código en base de datos
     const resultado = moduloUser.generarCodigoValidacion(idUsuario);
     if (!resultado.exitoso) { return res.status(400).json(resultado); }
-    log.info(`📧 [AUTH] Código generado para usuario: ${idUsuario}`);
-    return res.status(200).json({ exitoso: true, mensaje: 'Código generado. Expira en 10 minutos.', expiraEn: resultado.expiraEn, codigo: resultado.codigo });
+
+    // 3. Enviar el correo con el código a través de Zimbra
+    const emailResult = await emailService.enviarCodigoVerificacion(correoDestino, resultado.codigo);
+    
+    if (!emailResult.exitoso) {
+      log.error('❌ Falló el envío de correo a:', correoDestino);
+      return res.status(500).json({ exitoso: false, error: 'No se pudo enviar el correo de verificación. Intenta más tarde.' });
+    }
+
+    log.info(`📧 [AUTH] Código de verificación enviado por correo a: ${correoDestino}`);
+
+    // 4. Respuesta al frontend (Por seguridad, ya no enviamos el código en el JSON)
+    return res.status(200).json({ 
+      exitoso: true, 
+      mensaje: 'Código de verificación enviado a tu correo. Expira en 10 minutos.', 
+      expiraEn: resultado.expiraEn
+      // codigo: resultado.codigo // <-- COMENTADO POR SEGURIDAD
+    });
   } catch (error) {
     log.error('❌ Error en /auth/generar-codigo:', error.message);
-    return res.status(500).json({ exitoso: false, error: 'Error al generar código', codigo: 'ERROR_SERVIDOR' });
+    return res.status(500).json({ exitoso: false, error: 'Error al generar y enviar código', codigo: 'ERROR_SERVIDOR' });
   }
 });
 
@@ -400,7 +427,6 @@ app.get('/auth/historial/:idUsuario', (req, res) => {
   }
 });
 
-// ✅ NUEVA: Actualizar datos del usuario (foto, nombre visible, contraseña)
 app.post('/auth/actualizar-usuario', uploadUserPhoto.single('foto'), async (req, res) => {
   try {
     const { idUsuario, nombreVisible, contrasena, contrasenaActual } = req.body;
@@ -424,11 +450,10 @@ app.post('/auth/actualizar-usuario', uploadUserPhoto.single('foto'), async (req,
       fotoPerfilPath = req.file.path;
     }
 
-    // ✅ Pasar contrasenaActual al módulo
     const resultado = await moduloUser.actualizarUsuario(idUsuario, {
       nombreVisible,
       contrasena,
-      contrasenaActual,   // ✅ NUEVO
+      contrasenaActual,
       fotoPerfilPath
     });
 
@@ -455,7 +480,6 @@ app.post('/auth/actualizar-usuario', uploadUserPhoto.single('foto'), async (req,
   }
 });
 
-// ✅ NUEVA: Servir foto de perfil del usuario
 app.get('/auth/usuario-foto/:idUsuario', (req, res) => {
   try {
     const usuario = db.prepare('SELECT FotoPerfilPath FROM Usuario WHERE id = ?').get(req.params.idUsuario);
@@ -565,7 +589,6 @@ app.post('/api/private/ask-doc', async function (req, res) {
     var numCtx = Math.min(Math.max(estimatedTokens + 1024, 4096), 32768);
     numCtx = validarYAdjustarNumCtx('qwen2.5:14b', numCtx);
 
-    // Intentamos Groq primero (mejor para documentos grandes). Si falla, fallback a Ollama local.
     let respuesta;
     try {
       respuesta = await usarGroq(prompt, 'llama-3.3-70b-versatile', { temperature: 0.0, max_tokens: 2048 });

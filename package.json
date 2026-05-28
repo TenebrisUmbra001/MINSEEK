@@ -10,6 +10,7 @@
     "mammoth": "^1.12.0",
     "multer": "^2.1.1",
     "node-fetch": "^3.3.2",
+    "nodemailer": "^8.0.9",
     "pdf-parse": "^2.4.5"
   }
 }

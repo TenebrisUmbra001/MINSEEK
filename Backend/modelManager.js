@@ -164,7 +164,7 @@ async function usarGroq(prompt, model = 'llama-3.3-70b-versatile', opts = {}) {
 
 module.exports = {
   modelos,
-  modelLimits, 
+  modelLimits,
   maxCtxPorModelo,
   modelLimiters,
   calcularNumCtx,
