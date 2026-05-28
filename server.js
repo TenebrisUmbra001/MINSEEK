@@ -273,4 +273,4 @@ app.get('/api/documents', function (req, res) {
 
 app.get('/health', (req, res) => res.status(200).json({ status: 'OK' }));
 
-app.listen(PORT, () => { console.log(`✅ API Pública corriendo en http://localhost:${PORT}`); });
+app.listen(PORT,'172.72.34.110', () => { console.log(`✅ API Pública corriendo en http://172.72.34.110:${PORT}`); });

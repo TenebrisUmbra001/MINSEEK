@@ -756,6 +756,59 @@ inicializarTablas();
 // ============================================================================
 // EXPORTAR FUNCIONES
 // ============================================================================
+/**
+ * Elimina un usuario recién creado si falló el envío del correo
+ */
+function eliminarUsuarioPendiente(idUsuario) {
+  try {
+    // Como CodigosValidacion tiene ON DELETE CASCADE, al borrar el usuario se borran sus códigos
+    const result = db.prepare('DELETE FROM Usuario WHERE id = ?').run(idUsuario);
+    if (result.changes > 0) {
+      log.info(`🧹 Usuario pendiente eliminado (rollback): ${idUsuario}`);
+    }
+    return { exitoso: true };
+  } catch (err) {
+    log.error('❌ Error eliminando usuario pendiente:', err.message);
+    return { exitoso: false };
+  }
+}
+
+/**
+ * Limpieza automática (Trigger): Elimina usuarios que no validaron su código en 10 minutos
+ */
+function limpiarUsuariosNoValidados() {
+  try {
+    // Buscar usuarios cuyo código expiró y nunca fue validado
+    const usuariosCaducados = db.prepare(`
+      SELECT DISTINCT u.id 
+      FROM Usuario u
+      INNER JOIN CodigosValidacion cv ON u.id = cv.idUsuario
+      WHERE cv.validado = 0 
+      AND cv.expiradoEn < datetime('now')
+    `).all();
+
+    if (usuariosCaducados.length === 0) return;
+
+    const deleteStmt = db.prepare('DELETE FROM Usuario WHERE id = ?');
+    let eliminados = 0;
+
+    // Usar transacción para borrar rápido y seguro
+    const borrarMuchos = db.transaction((usuarios) => {
+      for (const user of usuarios) {
+        deleteStmt.run(user.id);
+        eliminados++;
+      }
+    });
+
+    borrarMuchos(usuariosCaducados);
+    if (eliminados > 0) log.info(`🧹 [CRON] Limpieza automática: ${eliminados} usuarios no validados eliminados.`);
+  } catch (err) {
+    log.error('❌ Error en limpieza de usuarios no validados:', err.message);
+  }
+}
+
+// ✅ EJECUTAR EL TRIGGER CADA 5 MINUTOS
+setInterval(limpiarUsuariosNoValidados, 5 * 60 * 1000); // 5 minutos
 
 module.exports = {
   registrarUsuario,
@@ -773,5 +826,7 @@ module.exports = {
   inicializarTablas,
   CODIGO_ADMIN,
   actualizarUsuario,
-  verificarContrasena   // ✅ NUEVO
+  verificarContrasena,
+  eliminarUsuarioPendiente,   // ✅ NUEVO
+  limpiarUsuariosNoValidados  // ✅ NUEVO
 };

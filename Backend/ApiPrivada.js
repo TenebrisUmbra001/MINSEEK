@@ -336,29 +336,40 @@ app.post('/auth/generar-codigo', async (req, res) => {
     const resultado = moduloUser.generarCodigoValidacion(idUsuario);
     if (!resultado.exitoso) { return res.status(400).json(resultado); }
 
-    // 3. Enviar el correo con el código a través de Zimbra
+    // 3. Intentar enviar el correo por Zimbra
     const emailResult = await emailService.enviarCodigoVerificacion(correoDestino, resultado.codigo);
     
     if (!emailResult.exitoso) {
-      log.error('❌ Falló el envío de correo a:', correoDestino);
-      return res.status(500).json({ exitoso: false, error: 'No se pudo enviar el correo de verificación. Intenta más tarde.' });
+      // ❌ Si el correo falla, HACEMOS ROLLBACK: Eliminamos el usuario y sus códigos
+      log.error(`❌ [AUTH] Falló el envío de correo a ${correoDestino}. Ejecutando rollback de usuario...`);
+      moduloUser.eliminarUsuarioPendiente(idUsuario);
+      
+      // Devolvemos error al frontend para que NO abra el modal y el usuario intente de nuevo
+      return res.status(500).json({ 
+        exitoso: false, 
+        error: 'No se pudo enviar el correo de verificación. Por favor, verifica que el correo sea correcto e intenta registrarte de nuevo.' 
+      });
     }
 
-    log.info(`📧 [AUTH] Código de verificación enviado por correo a: ${correoDestino}`);
+    log.info(`📧 [AUTH] Código enviado por correo a: ${correoDestino}`);
 
-    // 4. Respuesta al frontend (Por seguridad, ya no enviamos el código en el JSON)
+    // 4. Respuesta al frontend si todo salió bien
     return res.status(200).json({ 
       exitoso: true, 
       mensaje: 'Código de verificación enviado a tu correo. Expira en 10 minutos.', 
       expiraEn: resultado.expiraEn
-      // codigo: resultado.codigo // <-- COMENTADO POR SEGURIDAD
     });
   } catch (error) {
     log.error('❌ Error en /auth/generar-codigo:', error.message);
-    return res.status(500).json({ exitoso: false, error: 'Error al generar y enviar código', codigo: 'ERROR_SERVIDOR' });
+    
+    // En caso de error crítico del servidor, también borramos el usuario
+    if (req.body.idUsuario) {
+      moduloUser.eliminarUsuarioPendiente(req.body.idUsuario);
+    }
+    
+    return res.status(500).json({ exitoso: false, error: 'Error interno al generar y enviar código', codigo: 'ERROR_SERVIDOR' });
   }
 });
-
 app.post('/auth/validar-codigo', (req, res) => {
   try {
     const { idUsuario, codigo } = req.body;
