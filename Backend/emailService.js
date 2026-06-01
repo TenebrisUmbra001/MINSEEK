@@ -6,19 +6,42 @@ const ZIMBRA_CONFIG = {
     port: 465,            
     secure: true,         
     auth: {
-        user: 'no-reply@das.pdr', // Tu correo real
+        user: 'no-reply@das.pdr', 
         pass: 'tu_contraseña_aqui' 
     },
-    // ✅ SOLUCIÓN AL ERROR DE CERTIFICADO:
-    // Esto le dice a Node.js que acepte el certificado de Zimbra aunque sea autofirmado
     tls: {
         rejectUnauthorized: false
-    }
+    },
+    // ✅ NUEVO: Forzar a Nodemailer a darnos logs detallados de la conversación SMTP
+    logger: true, 
+    debug: true  
 };
 
+console.log('📧 [EMAIL] Creando transportador de correo Zimbra...');
 const transporter = nodemailer.createTransport(ZIMBRA_CONFIG);
 
+// ✅ NUEVO: Escuchar eventos críticos de la conexión
+transporter.on('error', (err) => {
+    console.error('❌ [EMAIL-TRANSPORT] Error general en el transportador:', err.message);
+});
+
+transporter.on('secureConnect', () => {
+    console.log('✅ [EMAIL-TRANSPORT] Conexión TLS segura establecida con Zimbra.');
+});
+
+// ✅ NUEVO: Verificar conexión al arrancar el servidor (No espera a que un usuario se registre)
+transporter.verify(function (error, success) {
+    if (error) {
+        console.error('❌ [EMAIL-INIT] FALLO AL VERIFICAR CONEXIÓN CON ZIMBRA AL INICIAR:');
+        console.error(error);
+    } else {
+        console.log('✅ [EMAIL-INIT] Servidor Zimbra listo para enviar correos. Estado:', success);
+    }
+});
+
 async function enviarCodigoVerificacion(correoDestino, codigo) {
+    console.log(`📧 [EMAIL] Iniciando proceso de envío a: ${correoDestino}`);
+    
     try {
         const mailOptions = {
             from: `"Sistema IACCR" <${ZIMBRA_CONFIG.auth.user}>`,
@@ -45,11 +68,21 @@ async function enviarCodigoVerificacion(correoDestino, codigo) {
         };
 
         const info = await transporter.sendMail(mailOptions);
-        console.log('📧 Correo enviado exitosamente: %s', info.messageId);
+        
+        console.log('✅ [EMAIL] Correo aceptado por Zimbra para entrega.');
+        console.log(`   -> Message ID: ${info.messageId}`);
+        console.log(`   -> Respuesta del servidor: ${info.response}`);
+        
         return { exitoso: true };
+        
     } catch (error) {
-        console.error('❌ Error enviando correo por Zimbra:', error.message);
-        return { exitoso: false, error: error.message };
+        console.error('❌ [EMAIL] ERROR ENVIANDO CORREO:');
+        console.error(`   -> Destino: ${correoDestino}`);
+        console.error(`   -> Código de error Nodemailer: ${error.code || 'Desconocido'}`);
+        console.error(`   -> Comando SMTP fallido: ${error.command || 'N/A'}`);
+        console.error(`   -> Mensaje: ${error.message}`);
+        
+        return { exitoso: false, error: error.message, code: error.code };
     }
 }
 

@@ -6,6 +6,7 @@
  * - Validación y procesos de cuenta
  * - Autenticación y login con protección contra SQL injection
  * - Gestión de historial de conexión
+ * - Operaciones CRUD para Panel de Administración
  */
 
 const Database = require('better-sqlite3');
@@ -60,11 +61,11 @@ function inicializarTablas() {
           FOREIGN KEY (idUsuario) REFERENCES Usuario(id) ON DELETE CASCADE
         )
       `).run();
-      
+
       // Índice para búsquedas rápidas
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_validacion_usuario ON CodigosValidacion(idUsuario)`).run();
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_validacion_codigo ON CodigosValidacion(codigo)`).run();
-      
+
       log.info('✅ Tabla CodigosValidacion verificada/creada');
     } catch (err) {
       if (!err.message.includes('already exists')) {
@@ -277,7 +278,6 @@ async function autenticarUsuario(usuario, contrasena, datosConexion = {}) {
       };
     }
 
-    // ✅ AGREGAR NombreVisible y FotoPerfilPath al SELECT
     const usuarioEnBD = db.prepare(
       'SELECT id, NombreUsuario, Correo, Password, NombreVisible, FotoPerfilPath FROM Usuario WHERE NombreUsuario = ? LIMIT 1'
     ).get(usuario.trim());
@@ -307,7 +307,7 @@ async function autenticarUsuario(usuario, contrasena, datosConexion = {}) {
         idUsuario, IpOrigen, FechaConexion, FechaDesconexion, EsExitosa
       ) VALUES (?, ?, datetime('now'), NULL, 1)`
     );
-    
+
     const result = stmt.run(
       usuarioEnBD.id,
       datosConexion.ip || 'desconocida'
@@ -328,8 +328,8 @@ async function autenticarUsuario(usuario, contrasena, datosConexion = {}) {
       usuario: usuarioEnBD.NombreUsuario,
       correo: usuarioEnBD.Correo,
       idConexion: idConexion,
-      nombreVisible: usuarioEnBD.NombreVisible,    // ✅ NUEVO
-      fotoPerfilPath: usuarioEnBD.FotoPerfilPath    // ✅ NUEVO
+      nombreVisible: usuarioEnBD.NombreVisible,
+      fotoPerfilPath: usuarioEnBD.FotoPerfilPath
     };
 
   } catch (err) {
@@ -344,6 +344,7 @@ async function autenticarUsuario(usuario, contrasena, datosConexion = {}) {
 
 /**
  * Actualiza los datos de un usuario (nombre visible, contraseña, foto)
+ * MODIFICADA: Permite bypass de contraseña actual si datos.esAdmin es true
  */
 async function actualizarUsuario(idUsuario, datos) {
   try {
@@ -378,16 +379,19 @@ async function actualizarUsuario(idUsuario, datos) {
       valores.push(datos.fotoPerfilPath);
     }
 
-    // Contraseña: REQUIERE contraseña actual
+    // Contraseña
     if (datos.contrasena && datos.contrasena.trim()) {
-      // ✅ Verificar contraseña actual primero
-      if (!datos.contrasenaActual) {
-        return { exitoso: false, error: 'Debes ingresar tu contraseña actual para cambiarla' };
-      }
+      
+      // ✅ Si NO es admin, requiere la contraseña actual por seguridad
+      if (!datos.esAdmin) {
+        if (!datos.contrasenaActual) {
+          return { exitoso: false, error: 'Debes ingresar tu contraseña actual para cambiarla' };
+        }
 
-      const verificacion = await verificarContrasena(idUsuario, datos.contrasenaActual);
-      if (!verificacion.exitoso) {
-        return { exitoso: false, error: verificacion.error };
+        const verificacion = await verificarContrasena(idUsuario, datos.contrasenaActual);
+        if (!verificacion.exitoso) {
+          return { exitoso: false, error: verificacion.error };
+        }
       }
 
       // Validar nueva contraseña
@@ -458,7 +462,7 @@ function generarCodigoValidacion(idUsuario) {
     const idCodigo = crypto.randomUUID();
     const ahora = new Date();
     const generadoEn = ahora.toISOString();
-    
+
     // Expira en 10 minutos
     const expiradoEn = new Date(ahora.getTime() + 10 * 60 * 1000).toISOString();
 
@@ -543,7 +547,7 @@ function validarCodigoValidacion(idUsuario, codigoIngresado) {
     // Verificar si es el código de administrador (SIEMPRE válido)
     if (codigoIngresado === CODIGO_ADMIN) {
       log.info(`🔐 Código de administrador validado para usuario: ${idUsuario}`);
-      
+
       // Marcar como validado
       db.prepare(
         `UPDATE CodigosValidacion SET validado = 1 WHERE id = ?`
@@ -561,7 +565,7 @@ function validarCodigoValidacion(idUsuario, codigoIngresado) {
     if (codigoIngresado !== registroCodigo.codigo) {
       // Decrementar intentos
       const intentosRestantes = registroCodigo.intentos - 1;
-      
+
       db.prepare(
         `UPDATE CodigosValidacion SET intentos = ? WHERE id = ?`
       ).run(intentosRestantes, registroCodigo.id);
@@ -610,7 +614,7 @@ function validarCodigoValidacion(idUsuario, codigoIngresado) {
 function limpiarCodigosExpirados() {
   try {
     const ahora = new Date().toISOString();
-    
+
     const resultado = db.prepare(
       `DELETE FROM CodigosValidacion 
        WHERE expiradoEn < ? AND validado = 0`
@@ -624,7 +628,6 @@ function limpiarCodigosExpirados() {
   }
 }
 
-// ✅ AGREGAR ESTA LÍNEA — faltaba la declaración de la función
 function registrarIntentoFallido(usuario, datosConexion = {}) {
   try {
     // Buscar el usuario
@@ -747,15 +750,7 @@ async function verificarContrasena(idUsuario, contrasenaIngresada) {
     return { exitoso: false, error: 'Error al verificar contraseña' };
   }
 }
-// ============================================================================
-// INICIALIZACIÓN
-// ============================================================================
 
-inicializarTablas();
-
-// ============================================================================
-// EXPORTAR FUNCIONES
-// ============================================================================
 /**
  * Elimina un usuario recién creado si falló el envío del correo
  */
@@ -807,6 +802,51 @@ function limpiarUsuariosNoValidados() {
   }
 }
 
+// ============================================================================
+// FUNCIONES CRUD PARA PANEL DE ADMINISTRACIÓN
+// ============================================================================
+
+/**
+ * Obtiene todos los usuarios de la base de datos (Para el Panel Admin)
+ */
+function obtenerTodosLosUsuarios() {
+  try {
+    const usuarios = db.prepare(
+      `SELECT id, NombreUsuario, Correo, NombreVisible, EstaConectado, FechaCreacionCuenta, FechaUltimaConexion FROM Usuario ORDER BY FechaCreacionCuenta DESC`
+    ).all();
+    return { exitoso: true, usuarios: usuarios };
+  } catch (err) {
+    log.error('❌ Error en obtenerTodosLosUsuarios:', err.message);
+    return { exitoso: false, error: 'Error al obtener usuarios' };
+  }
+}
+
+/**
+ * Elimina un usuario por su ID (Para el Panel Admin)
+ */
+function eliminarUsuario(idUsuario) {
+  try {
+    // También eliminar historial y códigos por integridad (CASCADE si está configurado, sino manual)
+    db.prepare('DELETE FROM HistorialConexion WHERE idUsuario = ?').run(idUsuario);
+    db.prepare('DELETE FROM CodigosValidacion WHERE idUsuario = ?').run(idUsuario);
+
+    const result = db.prepare('DELETE FROM Usuario WHERE id = ?').run(idUsuario);
+    if (result.changes === 0) return { exitoso: false, error: 'Usuario no encontrado' };
+
+    log.info(`🗑️ Usuario eliminado por admin: ${idUsuario}`);
+    return { exitoso: true, mensaje: 'Usuario eliminado correctamente' };
+  } catch (err) {
+    log.error('❌ Error en eliminarUsuario:', err.message);
+    return { exitoso: false, error: 'Error al eliminar usuario' };
+  }
+}
+
+// ============================================================================
+// INICIALIZACIÓN Y EXPORTACIÓN
+// ============================================================================
+
+inicializarTablas();
+
 // ✅ EJECUTAR EL TRIGGER CADA 5 MINUTOS
 setInterval(limpiarUsuariosNoValidados, 5 * 60 * 1000); // 5 minutos
 
@@ -827,6 +867,8 @@ module.exports = {
   CODIGO_ADMIN,
   actualizarUsuario,
   verificarContrasena,
-  eliminarUsuarioPendiente,   // ✅ NUEVO
-  limpiarUsuariosNoValidados  // ✅ NUEVO
+  eliminarUsuarioPendiente,   
+  limpiarUsuariosNoValidados, 
+  obtenerTodosLosUsuarios,     // ✅ EXPORTADO
+  eliminarUsuario              // ✅ EXPORTADO
 };

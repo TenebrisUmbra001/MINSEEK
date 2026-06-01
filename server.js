@@ -273,4 +273,38 @@ app.get('/api/documents', function (req, res) {
 
 app.get('/health', (req, res) => res.status(200).json({ status: 'OK' }));
 
-app.listen(PORT,'172.72.34.110', () => { console.log(`✅ API Pública corriendo en http://172.72.34.110:${PORT}`); });
+// OBTENER TODOS LOS USUARIOS
+app.get('/api/usuarios', async (req, res) => {
+  try {
+    const result = await forwardGetToPrivate('/auth/usuarios');
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    return res.status(502).json({ error: 'Error servidor' });
+  }
+});
+
+// ADMIN: ACTUALIZAR USUARIO SIN CONTRASEÑA ACTUAL
+app.post('/api/admin/actualizar-usuario', async (req, res) => {
+  try {
+    const { idUsuario, nombreVisible, contrasena } = req.body;
+    if (!idUsuario) return res.status(400).json({ exitoso: false, error: 'idUsuario requerido' });
+    const result = await forwardToPrivate('/auth/admin/actualizar-usuario', { idUsuario, nombreVisible, contrasena });
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    return res.status(502).json({ error: 'Error servidor' });
+  }
+});
+
+// ADMIN: ELIMINAR USUARIO
+app.post('/api/admin/eliminar-usuario', async (req, res) => {
+  try {
+    const { idUsuario } = req.body;
+    if (!idUsuario) return res.status(400).json({ exitoso: false, error: 'idUsuario requerido' });
+    const result = await forwardToPrivate('/auth/admin/eliminar-usuario', { idUsuario });
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    return res.status(502).json({ error: 'Error servidor' });
+  }
+});
+
+app.listen(PORT, () => { console.log(`✅ API Pública corriendo en http://localhost:${PORT}`); });

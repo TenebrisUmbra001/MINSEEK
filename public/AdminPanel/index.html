@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Administracion</title>
+    <link rel="stylesheet" href="AdPanel.css">
+</head>
+
+<body>
+    <!-- Fondos decorativos difuminados -->
+    <div class="bg-glow g1"></div>
+    <div class="bg-glow g2"></div>
+
+    <!-- Cabecera -->
+    <header class="header">
+        <h1>Panel de Control <span>Administrador</span></h1>
+        <p>Ingrese sus credenciales para acceder al sistema</p>
+    </header>
+
+    <!-- Contenido Principal -->
+    <main>
+        <div class="login-card">
+            
+           <div class="login-icon" >
+              <img src="../Assets/LOGO IA CCR.png" alt="">
+              
+            </div>
+
+            <h2>Iniciar Sesión</h2>
+
+            <!-- Grupo de Input con Icono (Usuario) -->
+            <div class="input-group">
+                <input type="text" placeholder="Ingrese Su Usuario">
+                <svg viewBox="0 0 24 24">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+            </div>
+
+            <!-- Grupo de Input con Icono (Contraseña) -->
+            <div class="input-group">
+                <input type="password" placeholder="Ingrese Su Contraseña">
+                <svg viewBox="0 0 24 24">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+            </div>
+
+            <!-- Botón con efecto hover -->
+            <button class="btn-login" onclick="InicioAdministrador()">
+                <span>Login</span>
+            </button>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+       <p>&copy; 2026 CCR MININT Pinar del Rio. Todos los derechos reservados.</p>
+    </footer>
+
+    <script src="AdPanel.js"></script>
+</body>
+
+</html>

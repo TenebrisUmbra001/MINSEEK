@@ -207,6 +207,16 @@ document.addEventListener('click', function (e) {
   }
 });
 
+// ✅ IR AL PANEL DE ADMINISTRACIÓN (AÑADIDO AQUÍ)
+var btnAdminPanel = document.getElementById('btnAdminPanel');
+if (btnAdminPanel) {
+  btnAdminPanel.addEventListener('click', function () {
+    optionsDropdown.classList.remove('open');
+    // Abre el panel en una nueva pestaña para no perder la sesión del chat
+    window.open('/AdminPanel/index.html', '_blank');
+  });
+}
+
 // ── Modal de Ajustes ──
 if (btnAjustes) {
   btnAjustes.addEventListener('click', function () {

@@ -615,6 +615,37 @@ app.post('/api/private/ask-doc', async function (req, res) {
   }
 });
 
+app.get('/auth/usuarios', (req, res) => {
+  const resultado = moduloUser.obtenerTodosLosUsuarios();
+  if (!resultado.exitoso) return res.status(500).json(resultado);
+  return res.status(200).json(resultado);
+});
+
+app.post('/auth/admin/actualizar-usuario', async (req, res) => {
+  try {
+    const { idUsuario, nombreVisible, contrasena } = req.body;
+    // Usamos la misma función pero le decimos que el admin no requiere contraseña actual
+    const resultado = await moduloUser.actualizarUsuario(idUsuario, { nombreVisible, contrasena, esAdmin: true });
+    if (!resultado.exitoso) return res.status(400).json(resultado);
+    return res.status(200).json(resultado);
+  } catch (error) {
+    return res.status(500).json({ exitoso: false, error: 'Error del servidor' });
+  }
+});
+
+app.post('/auth/admin/eliminar-usuario', (req, res) => {
+  try {
+    const { idUsuario } = req.body;
+    const resultado = moduloUser.eliminarUsuario(idUsuario);
+    if (!resultado.exitoso) return res.status(400).json(resultado);
+    return res.status(200).json(resultado);
+  } catch (error) {
+    return res.status(500).json({ exitoso: false, error: 'Error del servidor' });
+  }
+});
+
+
+
 // ============================================================================
 // INICIO DEL SERVIDOR
 // ============================================================================
