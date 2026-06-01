@@ -1,3 +1,17 @@
+// panel.js
+
+/* ── Protección: Verificar que hay sesión de Administrador activa ── */
+(function verificarAdmin() {
+    var esAdmin = sessionStorage.getItem('esAdmin');
+    var idUsuario = sessionStorage.getItem('idUsuario');
+    
+    // Si no es admin o no hay sesión, lo echamos al login
+    if (esAdmin !== 'true' || !idUsuario) {
+        window.location.replace('AdPanel.html'); 
+        return;
+    }
+})();
+
 // URL base de tu API Pública
 const API_URL = '/api';
 
@@ -24,7 +38,9 @@ document.getElementById('searchInput').addEventListener('input', function(e) {
 // ── Obtener usuarios de la API ──
 async function cargarUsuarios() {
     try {
-        const response = await fetch(`${API_URL}/usuarios`);
+        const response = await fetch(`${API_URL}/usuarios`, {
+            headers: { 'x-user-id': sessionStorage.getItem('idUsuario') || '' } // 🔒 Seguridad extra para el backend
+        });
         const data = await response.json();
         
         if (data.exitoso && data.usuarios.length > 0) {
@@ -123,6 +139,12 @@ async function guardarUsuario(event) {
     const nombreVisible = document.getElementById('input-nombre-visible').value;
     const contrasena = document.getElementById('input-password').value;
 
+    // 🔒 Headers con ID del admin para validar en el backend
+    const myHeaders = {
+        'Content-Type': 'application/json',
+        'x-user-id': sessionStorage.getItem('idUsuario') || ''
+    };
+
     try {
         let response;
         if (id) {
@@ -132,7 +154,7 @@ async function guardarUsuario(event) {
             
             response = await fetch(`${API_URL}/admin/actualizar-usuario`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: myHeaders,
                 body: JSON.stringify(body)
             });
         } else {
@@ -143,7 +165,7 @@ async function guardarUsuario(event) {
             }
             response = await fetch(`${API_URL}/registro`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: myHeaders,
                 body: JSON.stringify({ usuario, correo, contrasena })
             });
         }
@@ -176,10 +198,17 @@ function cerrarModalEliminar() {
 
 async function confirmarEliminar() {
     const id = document.getElementById('eliminar-id').value;
+
+    // 🔒 Headers con ID del admin para validar en el backend
+    const myHeaders = {
+        'Content-Type': 'application/json',
+        'x-user-id': sessionStorage.getItem('idUsuario') || ''
+    };
+
     try {
         const response = await fetch(`${API_URL}/admin/eliminar-usuario`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: myHeaders,
             body: JSON.stringify({ idUsuario: id })
         });
         const data = await response.json();
