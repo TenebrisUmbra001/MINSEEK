@@ -7,6 +7,7 @@
  * - Autenticación y login con protección contra SQL injection
  * - Gestión de historial de conexión
  * - Operaciones CRUD para Panel de Administración
+ * - Sistema de inactividad (desconexión automática a los 45 min)
  */
 
 const Database = require('better-sqlite3');
@@ -438,7 +439,6 @@ async function actualizarUsuario(idUsuario, datos) {
 }
 
 
-
 /**
  * Genera un código de 8 cifras aleatorio
  */
@@ -842,13 +842,98 @@ function eliminarUsuario(idUsuario) {
 }
 
 // ============================================================================
+// SISTEMA DE INACTIVIDAD - Desconexión automática tras 45 min
+// ============================================================================
+
+/**
+ * Actualiza la marca de tiempo de última actividad de un usuario
+ * Se llama desde el heartbeat del frontend y en cada acción del usuario
+ * 
+ * @param {string} idUsuario - ID del usuario
+ * @returns {boolean} - true si se actualizó correctamente
+ */
+function actualizarActividad(idUsuario) {
+  try {
+    if (!idUsuario) return false;
+    
+    const result = db.prepare(
+      `UPDATE Usuario SET FechaUltimaConexion = datetime('now') WHERE id = ? AND EstaConectado = 1`
+    ).run(idUsuario);
+    
+    return result.changes > 0;
+  } catch (err) {
+    log.error('❌ Error en actualizarActividad:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Desconecta usuarios que llevan más de X minutos sin actividad
+ * - Marca EstaConectado = 0 en la tabla Usuario
+ * - Cierra sesiones abiertas (FechaDesconexion = now) en HistorialConexion
+ * - Usa transacción para garantizar consistencia
+ * 
+ * @param {number} minutosInactividad - Minutos de inactividad para desconectar (default: 45)
+ * @returns {Object} - { desconectados: number }
+ */
+function desconectarUsuariosInactivos(minutosInactividad = 45) {
+  try {
+    // Buscar usuarios conectados cuya última actividad fue hace más de X minutos
+    const usuariosInactivos = db.prepare(
+      `SELECT id, NombreUsuario FROM Usuario 
+       WHERE EstaConectado = 1 
+       AND FechaUltimaConexion IS NOT NULL
+       AND datetime(FechaUltimaConexion, '+' || ? || ' minutes') < datetime('now')`
+    ).all(minutosInactividad);
+
+    if (usuariosInactivos.length === 0) {
+      return { desconectados: 0 };
+    }
+
+    // Prepared statements para la transacción
+    const cerrarHistorial = db.prepare(
+      `UPDATE HistorialConexion 
+       SET FechaDesconexion = datetime('now') 
+       WHERE idUsuario = ? AND FechaDesconexion IS NULL`
+    );
+
+    const desconectar = db.prepare(
+      `UPDATE Usuario SET EstaConectado = 0 WHERE id = ?`
+    );
+
+    let count = 0;
+
+    // Transacción: todo o nada
+    const desconectarTodo = db.transaction((usuarios) => {
+      for (const u of usuarios) {
+        cerrarHistorial.run(u.id);
+        desconectar.run(u.id);
+        count++;
+        log.info(`⏰ [INACTIVIDAD] Usuario desconectado: ${u.NombreUsuario} (inactivo > ${minutosInactividad} min)`);
+      }
+    });
+
+    desconectarTodo(usuariosInactivos);
+
+    if (count > 0) {
+      log.info(`⏰ [INACTIVIDAD] Total desconectados: ${count} usuario(s)`);
+    }
+
+    return { desconectados: count };
+  } catch (err) {
+    log.error('❌ Error en desconectarUsuariosInactivos:', err.message);
+    return { desconectados: 0, error: err.message };
+  }
+}
+
+// ============================================================================
 // INICIALIZACIÓN Y EXPORTACIÓN
 // ============================================================================
 
 inicializarTablas();
 
-// ✅ EJECUTAR EL TRIGGER CADA 5 MINUTOS
-setInterval(limpiarUsuariosNoValidados, 5 * 60 * 1000); // 5 minutos
+// ✅ EJECUTAR TRIGGER DE LIMPIEZA CADA 5 MINUTOS
+setInterval(limpiarUsuariosNoValidados, 5 * 60 * 1000); 
 
 module.exports = {
   registrarUsuario,
@@ -869,6 +954,8 @@ module.exports = {
   verificarContrasena,
   eliminarUsuarioPendiente,   
   limpiarUsuariosNoValidados, 
-  obtenerTodosLosUsuarios,     // ✅ EXPORTADO
-  eliminarUsuario              // ✅ EXPORTADO
+  obtenerTodosLosUsuarios,     
+  eliminarUsuario,             
+  actualizarActividad,         // ✅ NUEVO
+  desconectarUsuariosInactivos // ✅ NUEVO
 };

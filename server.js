@@ -12,6 +12,27 @@ const PORT = process.env.PORT || 2054;
 const PRIVATE_API_URL = process.env.PRIVATE_API_URL || 'http://localhost:6969';
 const PRIVATE_API_TOKEN = process.env.PRIVATE_API_TOKEN || '';
 
+// ============================================================================
+// CORS — PRIMERO QUE TODO
+// Firefox exige headers CORS en ORDEN y en TODAS las respuestas (incluso errores)
+// ============================================================================
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Max-Age', '86400');
+  res.setHeader('Access-Control-Expose-Headers', 'X-Model-Source');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+
+  next();
+});
+
+// ============================================================================
+// MIDDLEWARES
+// ============================================================================
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
@@ -22,8 +43,9 @@ var uploadLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: 'Demasiad
 var uploadMemory = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 var uploadUserPhoto = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+  limits: { fileSize: 5 * 1024 * 1024 }
 });
+
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'InicioSesion', 'index.html')));
 
 const DOMINIO_ZIMBRA = 'mail.das.pdr';
@@ -34,7 +56,6 @@ async function forwardToPrivate(path, body, options = {}) {
   while (true) { attempt++; const c = new AbortController(); const t = setTimeout(() => c.abort(), options.timeoutMs ?? 90000); try { const r = await fetch(`${PRIVATE_API_URL}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(PRIVATE_API_TOKEN ? { 'Authorization': `Bearer ${PRIVATE_API_TOKEN}` } : {}) }, signal: c.signal, body: JSON.stringify(body) }); clearTimeout(t); const txt = await r.text(); let p; try { p = JSON.parse(txt); } catch { p = txt; } return { status: r.status, body: p }; } catch (err) { clearTimeout(t); if (attempt > maxRetries) throw err; await new Promise(r => setTimeout(r, baseDelay * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 100))); } }
 }
 
-// ✅ Helper para peticiones GET hacia la API Privada
 async function forwardGetToPrivate(path, options = {}) {
   const maxRetries = options.maxRetries ?? 2; const baseDelay = options.baseDelay ?? 300; let attempt = 0;
   while (true) { attempt++; const c = new AbortController(); const t = setTimeout(() => c.abort(), options.timeoutMs ?? 30000); try { const r = await fetch(`${PRIVATE_API_URL}${path}`, { method: 'GET', headers: { ...(PRIVATE_API_TOKEN ? { 'Authorization': `Bearer ${PRIVATE_API_TOKEN}` } : {}) }, signal: c.signal }); clearTimeout(t); const txt = await r.text(); let p; try { p = JSON.parse(txt); } catch { p = txt; } return { status: r.status, body: p }; } catch (err) { clearTimeout(t); if (attempt > maxRetries) throw err; await new Promise(r => setTimeout(r, baseDelay * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 100))); } }
@@ -90,19 +111,17 @@ app.post('/api/login', authLimiter, async (req, res) => {
   }
 });
 
-// ✅ NUEVA: Logout
 app.post('/api/logout', async (req, res) => {
   try {
-    const { idConexion } = req.body;
+    const { idConexion, idUsuario } = req.body;
     if (!idConexion) return res.status(400).json({ error: 'idConexion requerido' });
-    const result = await forwardToPrivate('/auth/logout', { idConexion });
+    const result = await forwardToPrivate('/auth/logout', { idConexion, idUsuario });
     return res.status(result.status).json(result.body);
   } catch (error) {
     return res.status(502).json({ error: 'Error servidor' });
   }
 });
 
-// ✅ NUEVA: Info de usuario
 app.get('/api/usuario/:idUsuario', async (req, res) => {
   try {
     const result = await forwardGetToPrivate(`/auth/usuario/${req.params.idUsuario}`);
@@ -111,7 +130,7 @@ app.get('/api/usuario/:idUsuario', async (req, res) => {
     return res.status(502).json({ error: 'Error servidor' });
   }
 });
-// ✅ NUEVA: Actualizar datos del usuario (proxy a API Privada)
+
 app.post('/api/usuario/actualizar', uploadUserPhoto.single('foto'), async (req, res) => {
   try {
     const { idUsuario, nombreVisible, contrasena, contrasenaActual } = req.body;
@@ -121,7 +140,7 @@ app.post('/api/usuario/actualizar', uploadUserPhoto.single('foto'), async (req, 
     form.append('idUsuario', idUsuario);
     if (nombreVisible !== undefined) form.append('nombreVisible', nombreVisible);
     if (contrasena) form.append('contrasena', contrasena);
-    if (contrasenaActual) form.append('contrasenaActual', contrasenaActual);  // ✅ NUEVO
+    if (contrasenaActual) form.append('contrasenaActual', contrasenaActual);
     if (req.file) {
       form.append('foto', req.file.buffer, {
         filename: req.file.originalname,
@@ -157,7 +176,6 @@ app.post('/api/usuario/actualizar', uploadUserPhoto.single('foto'), async (req, 
   }
 });
 
-// ✅ NUEVA: Proxy para servir fotos de perfil
 app.get('/api/usuario-foto/:idUsuario', async (req, res) => {
   try {
     var headers = {};
@@ -184,7 +202,6 @@ app.get('/api/usuario-foto/:idUsuario', async (req, res) => {
   }
 });
 
-// ✅ NUEVA: Historial de conexiones
 app.get('/api/historial/:idUsuario', async (req, res) => {
   try {
     const limite = req.query.limite || 20;
@@ -192,6 +209,20 @@ app.get('/api/historial/:idUsuario', async (req, res) => {
     return res.status(result.status).json(result.body);
   } catch (error) {
     return res.status(502).json({ error: 'Error servidor' });
+  }
+});
+
+// ============================================================================
+// HEARTBEAT - Mantener sesión activa
+// ============================================================================
+app.post('/api/heartbeat', async (req, res) => {
+  try {
+    const { idUsuario } = req.body;
+    if (!idUsuario) return res.status(400).json({ exitoso: false, error: 'idUsuario requerido' });
+    const result = await forwardToPrivate('/auth/heartbeat', { idUsuario });
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    return res.status(502).json({ exitoso: false, error: 'Error del servidor' });
   }
 });
 
@@ -273,7 +304,6 @@ app.get('/api/documents', function (req, res) {
 
 app.get('/health', (req, res) => res.status(200).json({ status: 'OK' }));
 
-// OBTENER TODOS LOS USUARIOS
 app.get('/api/usuarios', async (req, res) => {
   try {
     const result = await forwardGetToPrivate('/auth/usuarios');
@@ -283,7 +313,6 @@ app.get('/api/usuarios', async (req, res) => {
   }
 });
 
-// ADMIN: ACTUALIZAR USUARIO SIN CONTRASEÑA ACTUAL
 app.post('/api/admin/actualizar-usuario', async (req, res) => {
   try {
     const { idUsuario, nombreVisible, contrasena } = req.body;
@@ -295,7 +324,6 @@ app.post('/api/admin/actualizar-usuario', async (req, res) => {
   }
 });
 
-// ADMIN: ELIMINAR USUARIO
 app.post('/api/admin/eliminar-usuario', async (req, res) => {
   try {
     const { idUsuario } = req.body;
@@ -305,6 +333,53 @@ app.post('/api/admin/eliminar-usuario', async (req, res) => {
   } catch (error) {
     return res.status(502).json({ error: 'Error servidor' });
   }
+});
+
+// ============================================================================
+// RECUPERACIÓN DE CONTRASEÑA (Proxy → API Privada)
+// ============================================================================
+
+app.post('/api/recuperar-password', authLimiter, async (req, res) => {
+  try {
+    const { correo } = req.body;
+    if (!correo) return res.status(400).json({ exitoso: false, error: 'Correo requerido' });
+    const v = validarEmailZimbra(correo);
+    if (!v.valid) return res.status(400).json({ exitoso: false, error: v.error });
+    const result = await forwardToPrivate('/auth/recuperar-password', { correo });
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    console.error('Error en /api/recuperar-password:', error.message);
+    return res.status(502).json({ exitoso: false, error: 'Error del servidor' });
+  }
+});
+
+app.post('/api/restablecer-password', authLimiter, async (req, res) => {
+  try {
+    const { idUsuario, codigo, nuevaContrasena } = req.body;
+    if (!idUsuario || !codigo || !nuevaContrasena) {
+      return res.status(400).json({ exitoso: false, error: 'Todos los campos son requeridos' });
+    }
+    const result = await forwardToPrivate('/auth/restablecer-password', { idUsuario, codigo, nuevaContrasena });
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    console.error('Error en /api/restablecer-password:', error.message);
+    return res.status(502).json({ exitoso: false, error: 'Error del servidor' });
+  }
+});
+
+app.get('/recuperar-password', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'RecuperarPassword', 'index.html'));
+});
+
+// ============================================================================
+// ERROR HANDLER — Conservar CORS en errores
+// ============================================================================
+app.use((err, req, res, next) => {
+  if (!res.get('Access-Control-Allow-Origin')) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  console.error('❌ [ERROR HANDLER]', err.message);
+  res.status(err.status || 500).json({ exitoso: false, error: 'Error interno del servidor' });
 });
 
 app.listen(PORT, () => { console.log(`✅ API Pública corriendo en http://localhost:${PORT}`); });

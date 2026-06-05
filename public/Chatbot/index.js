@@ -6,7 +6,74 @@
     window.location.replace('/');
     return;
   }
+  // ✅ Iniciar heartbeat para mantener la sesión activa (desconexión a los 45 min)
+  iniciarHeartbeat(idUsuario);
 })();
+
+// ============================================================================
+// SISTEMA DE INACTIVIDAD - Heartbeat cada 5 min + detección de sesión expirada
+// ============================================================================
+var heartbeatInterval = null;
+var idUsuarioActual = null;
+
+function iniciarHeartbeat(idUsuario) {
+  detenerHeartbeat();
+  idUsuarioActual = idUsuario;
+  
+  // Enviar heartbeat cada 5 minutos
+  heartbeatInterval = setInterval(async () => {
+    try {
+      const response = await fetch('/api/heartbeat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ idUsuario: idUsuarioActual })
+      });
+      
+      const data = await response.json();
+      
+      // Si el backend dice que la sesión expiró (más de 45 min sin actividad)
+      if (!data.sesionActiva || data.codigo === 'SESION_EXPIRADA') {
+        console.warn('⏰ Sesión expirada por inactividad');
+        detenerHeartbeat();
+        cerrarSesionPorInactividad();
+        return;
+      }
+      
+      // Si el usuario fue desconectado por un admin o error
+      if (!data.exitoso && (response.status === 401 || response.status === 404)) {
+        detenerHeartbeat();
+        cerrarSesionPorInactividad();
+      }
+    } catch (e) {
+      // Error de red (CORS bloqueado o servidor caído)
+      // No cerramos sesión inmediatamente, el backend lo hará a los 45 min
+      console.warn('⚠️ Heartbeat error de red:', e.message);
+    }
+  }, 5 * 60 * 1000); // 5 minutos
+  
+  // Enviar primer heartbeat inmediato para registrar la actividad
+  fetch('/api/heartbeat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ idUsuario: idUsuarioActual })
+  }).catch(() => {});
+}
+
+function detenerHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+}
+
+function cerrarSesionPorInactividad() {
+  sessionStorage.clear();
+  alert('Tu sesión ha expirado por inactividad (más de 45 minutos sin actividad).');
+  window.location.replace('/');
+}
+// ============================================================================
 
 /* ── DOM ── */
 var sidebar = document.getElementById('sidebar');
@@ -480,6 +547,7 @@ settingsForm.addEventListener('submit', async function (e) {
 
 // ── Desconectarse ──
 async function logout() {
+  detenerHeartbeat(); // ✅ DETENER HEARTBEAT AL CERRAR SESIÓN MANUALMENTE
   optionsDropdown.classList.remove('open');
 
   var overlay = document.createElement('div');
@@ -489,12 +557,16 @@ async function logout() {
 
   try {
     var connId = sessionStorage.getItem('idConexion') || currentConnectionId;
+    var userId = sessionStorage.getItem('idUsuario') || currentUserId; // ✅ Obtener userId
     if (!connId) throw new Error('No hay idConexion');
 
     var response = await fetch('/api/logout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idConexion: connId })
+      body: JSON.stringify({ 
+        idConexion: connId,
+        idUsuario: userId // ✅ ENVIAR idUsuario PARA QUE EL BACKEND ACTUALICE EstaConectado = 0
+      })
     });
 
     if (response.ok) {

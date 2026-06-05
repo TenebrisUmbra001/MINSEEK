@@ -86,4 +86,57 @@ async function enviarCodigoVerificacion(correoDestino, codigo) {
     }
 }
 
-module.exports = { enviarCodigoVerificacion };
+
+/**
+ * Envía un correo con el código de recuperación de contraseña.
+ * Usa un diseño diferenciado (naranja) para distinguirlo del correo de registro.
+ */
+async function enviarCodigoRecuperacion(correoDestino, codigo) {
+    console.log(`📧 [RECOVERY] Iniciando envío de código de recuperación a: ${correoDestino}`);
+
+    try {
+        const mailOptions = {
+            from: `"Sistema IACCR" <${ZIMBRA_CONFIG.auth.user}>`,
+            to: correoDestino,
+            subject: 'Código de Recuperación de Contraseña - CHATBOT con IACCR',
+            text: `Has solicitado restablecer tu contraseña. Tu código de recuperación es: ${codigo}. Expira en 10 minutos. Si no solicitaste este cambio, ignora este correo.`,
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #ddd; border-radius: 8px; max-width: 500px; margin: auto; background-color: #f9f9f9;">
+                    <div style="background-color: #d35400; padding: 10px; border-radius: 8px 8px 0 0; text-align: center;">
+                        <h2 style="color: white; margin: 0;">CHATBOT con IACCR</h2>
+                    </div>
+                    <div style="padding: 20px; background-color: white; border-radius: 0 0 8px 8px;">
+                        <p style="font-size: 16px; color: #333;">Hola,</p>
+                        <p style="font-size: 16px; color: #333;">Has solicitado restablecer tu contraseña. Utiliza el siguiente código:</p>
+                        <div style="text-align: center; margin: 30px 0;">
+                            <span style="font-size: 32px; font-weight: bold; color: #d35400; background: #fef5ec; padding: 15px 30px; border-radius: 8px; letter-spacing: 8px; border: 2px dashed #d35400;">${codigo}</span>
+                        </div>
+                        <p style="color: #888; font-size: 14px; text-align: center;">⏳ Este código expira en <strong>10 minutos</strong>.</p>
+                        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+                        <p style="color: #999; font-size: 12px; text-align: center;">Si no solicitaste este cambio, ignora este correo y tu contraseña permanecerá sin cambios.</p>
+                    </div>
+                </div>
+            `
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+
+        console.log('✅ [RECOVERY] Correo de recuperación aceptado por Zimbra.');
+        console.log(`   -> Message ID: ${info.messageId}`);
+        console.log(`   -> Respuesta del servidor: ${info.response}`);
+
+        return { exitoso: true };
+
+    } catch (error) {
+        console.error('❌ [RECOVERY] ERROR ENVIANDO CORREO DE RECUPERACIÓN:');
+        console.error(`   -> Destino: ${correoDestino}`);
+        console.error(`   -> Código de error Nodemailer: ${error.code || 'Desconocido'}`);
+        console.error(`   -> Mensaje: ${error.message}`);
+
+        return { exitoso: false, error: error.message, code: error.code };
+    }
+}
+
+// ── Exportar ambas funciones ──
+module.exports = { enviarCodigoVerificacion, enviarCodigoRecuperacion };
+

@@ -38,7 +38,39 @@ const {
 
 const log = modelManager.log;
 
-const emailService = require('./emailService');
+const { enviarCodigoVerificacion, enviarCodigoRecuperacion } = require('./emailService');
+
+// ============================================================================
+// CORS — DEBE SER LO PRIMERO, ANTES QUE CUALQUIER OTRA COSA
+// Firefox bloquea si los headers CORS no están en el orden correcto
+// y si no aparecen TAMBIÉN en respuestas de error (401, 404, 500)
+// ============================================================================
+app.use((req, res, next) => {
+  // 1️⃣ Origen permitido — NUNCA * con credentials
+  res.setHeader('Access-Control-Allow-Origin', 'http://localhost:2054');
+  
+  // 2️⃣ Métodos permitidos
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  
+  // 3️⃣ Headers permitidos en la petición
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  
+  // 4️⃣ Permitir credenciales (cookies, auth headers)
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  
+  // 5️⃣ Cache de preflight (Firefox exige esto para no re-preflightear cada 5 min)
+  res.setHeader('Access-Control-Max-Age', '86400');
+  
+  // 6️⃣ Headers expuestos al frontend (para leer X-Model-Source, etc.)
+  res.setHeader('Access-Control-Expose-Headers', 'X-Model-Source, X-Request-Id');
+
+  // ✅ Responder preflight INMEDIATAMENTE sin pasar por más middleware
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+
+  next();
+});
 
 // ============================================================================
 // MIDDLEWARES Y DIRECTORIOS
@@ -117,7 +149,6 @@ app.get('/api/status', (req, res) => {
 
 // ============================================================================
 // EJECUCIÓN DIRECTA (no-streaming)
-// Usa usarModeloInteligente: Groq para razonamiento profundo, local para lo demás
 // ============================================================================
 app.post('/api/private/execute', async (req, res) => {
   try {
@@ -127,7 +158,6 @@ app.post('/api/private/execute', async (req, res) => {
     const categoria = await categorizar(prompt);
     log.info(`📤 [EXECUTE] "${prompt.substring(0, 60)}..." → ${categoria}`);
 
-    // ✅ usarModeloInteligente: prueba Groq si es razonamiento + hay internet, sino local
     const respuesta = await usarModeloInteligente(categoria, prompt);
     return res.status(200).json({ ok: true, categoria, respuesta });
   } catch (error) {
@@ -138,10 +168,6 @@ app.post('/api/private/execute', async (req, res) => {
 
 // ============================================================================
 // RUTA /chat — STREAMING CORREGIDO
-// - Categoriza correctamente (NO fuerza resumen por longitud)
-// - keep_alive para mantener modelos en VRAM
-// - Groq streaming para razonamiento profundo (si hay internet)
-// - Ollama streaming para todo lo demás
 // ============================================================================
 app.post('/chat', async (req, res) => {
   let modeloEnUso = null;
@@ -155,11 +181,9 @@ app.post('/chat', async (req, res) => {
     const prompt = ultimoMensaje ? ultimoMensaje.content : '';
     var totalContent = messages.map(m => m.content || '').join('');
 
-    // ✅ PASO 1: Categorizar correctamente (NO forzar resumen por longitud)
     var categoria = await categorizar(prompt);
     log.info(`📂 [STREAM] Categoría: ${categoria} | chars: ${totalContent.length}`);
 
-    // ✅ PASO 2: Truncar si es muy largo (SIN cambiar categoría)
     var LIMITE_ABSOLUTO_CHARS = 50000;
     if (totalContent.length > LIMITE_ABSOLUTO_CHARS) {
       log.warn(`⚠️ [STREAM] Documento gigante (${totalContent.length} chars). Truncando a ${LIMITE_ABSOLUTO_CHARS}.`);
@@ -183,12 +207,10 @@ app.post('/chat', async (req, res) => {
       totalContent = mensajesTruncados.map(m => m.content || '').join('');
     }
 
-    // Headers SSE
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    // ✅ PASO 3: Si es razonamiento + hay internet → intentar Groq streaming
     if (categoria === 'razonamiento') {
       const groqDisponible = await verificarInternetYGroq();
       if (groqDisponible) {
@@ -244,7 +266,7 @@ app.post('/chat', async (req, res) => {
             }
 
             res.end();
-            return; // ✅ Groq exitoso, terminamos
+            return; 
           } else {
             log.warn(`⚠️ [STREAM] Groq respondió ${groqRes.status}, fallback a Ollama`);
           }
@@ -254,7 +276,6 @@ app.post('/chat', async (req, res) => {
       }
     }
 
-    // ✅ PASO 4: Stream desde Ollama (local)
     try {
       modeloEnUso = await obtenerYAdquirirModelo(categoria);
       limiterEnUso = modelLimiters[modeloEnUso];
@@ -279,7 +300,7 @@ app.post('/chat', async (req, res) => {
             model: modeloEnUso,
             messages: req.body.messages,
             stream: true,
-            keep_alive: keepAlive,  // ✅ Mantener en VRAM
+            keep_alive: keepAlive,  
             options: { num_ctx: numCtx }
           })
         });
@@ -309,18 +330,17 @@ app.post('/chat', async (req, res) => {
           }
         }
 
-        // ✅ NO cerrar modelo - keep_alive se encarga
         res.end();
 
       } catch (fetchErr) {
         clearTimeout(timeout);
         if (fetchErr.name === 'AbortError') {
           log.error(`⏱️ [STREAM] TIMEOUT de 15 min para ${modeloEnUso}.`);
-          await cerrarModelo(modeloEnUso);  // Cerrar solo en error
+          await cerrarModelo(modeloEnUso);  
           if (!res.headersSent) return res.status(504).json({ error: 'El modelo tardó demasiado. Intenta una pregunta más corta o un documento más pequeño.' });
           res.end();
         } else {
-          await cerrarModelo(modeloEnUso);  // Cerrar solo en error
+          await cerrarModelo(modeloEnUso);  
           throw fetchErr;
         }
       } finally {
@@ -373,7 +393,8 @@ app.post('/auth/generar-codigo', async (req, res) => {
     const resultado = moduloUser.generarCodigoValidacion(idUsuario);
     if (!resultado.exitoso) { return res.status(400).json(resultado); }
 
-    const emailResult = await emailService.enviarCodigoVerificacion(correoDestino, resultado.codigo);
+    // ✅ CORREGIDO: usar la función importada directamente, no emailService.
+    const emailResult = await enviarCodigoVerificacion(correoDestino, resultado.codigo);
     
     if (!emailResult.exitoso) {
       log.error(`❌ [AUTH] Falló el envío de correo a ${correoDestino}. Ejecutando rollback de usuario...`);
@@ -430,9 +451,15 @@ app.post('/auth/login', async (req, res) => {
 
 app.post('/auth/logout', (req, res) => {
   try {
-    const { idConexion } = req.body;
+    const { idConexion, idUsuario } = req.body;
     if (!idConexion) { return res.status(400).json({ exitoso: false, error: 'idConexion es requerido', codigo: 'CAMPO_FALTANTE' }); }
     const resultado = moduloUser.cerrarSesion(idConexion);
+    
+    // ✅ Al cerrar sesión manualmente, aseguramos que quede como desconectado
+    if (idUsuario) {
+      db.prepare('UPDATE Usuario SET EstaConectado = 0 WHERE id = ?').run(idUsuario);
+    }
+    
     if (!resultado.exitoso) { return res.status(400).json(resultado); }
     log.info(`✅ [AUTH] Sesión cerrada: ${idConexion}`);
     return res.status(200).json({ exitoso: true, mensaje: resultado.mensaje });
@@ -562,6 +589,45 @@ app.post('/auth/admin/eliminar-usuario', (req, res) => {
 });
 
 // ============================================================================
+// HEARTBEAT - El frontend envía un ping cada 5 min para mantener la sesión activa
+// ============================================================================
+app.post('/auth/heartbeat', (req, res) => {
+  try {
+    const { idUsuario } = req.body;
+    if (!idUsuario) {
+      return res.status(400).json({ exitoso: false, error: 'idUsuario requerido' });
+    }
+
+    // Verificar que el usuario sigue conectado
+    const usuario = db.prepare('SELECT id, EstaConectado FROM Usuario WHERE id = ?').get(idUsuario);
+    if (!usuario) {
+      return res.status(404).json({ exitoso: false, error: 'Usuario no encontrado', sesionActiva: false });
+    }
+
+    if (!usuario.EstaConectado) {
+      return res.status(401).json({ 
+        exitoso: false, 
+        error: 'Sesión expirada por inactividad', 
+        sesionActiva: false,
+        codigo: 'SESION_EXPIRADA'
+      });
+    }
+
+    // Actualizar marca de actividad
+    const actualizado = moduloUser.actualizarActividad(idUsuario);
+    
+    return res.status(200).json({ 
+      exitoso: true, 
+      activo: actualizado,
+      sesionActiva: true
+    });
+  } catch (error) {
+    log.error('❌ Error en /auth/heartbeat:', error.message);
+    return res.status(500).json({ exitoso: false, error: 'Error del servidor' });
+  }
+});
+
+// ============================================================================
 // RUTAS DE DOCUMENTOS
 // ============================================================================
 
@@ -632,8 +698,6 @@ app.get('/api/private/documents', function (req, res) {
   }
 });
 
-// ✅ CORREGIDO: ask-doc usa modelo LOCAL (qwen2.5:14b), NO Groq
-// Groq solo se usa para razonamiento profundo, no para consultar documentos
 app.post('/api/private/ask-doc', async function (req, res) {
   try {
     var docId = req.body.docId || req.body.documentId;
@@ -646,7 +710,6 @@ app.post('/api/private/ask-doc', async function (req, res) {
     var texto = row.contenido || '';
     log.info('📣 [ASK-DOC] docId=', docId, 'nombre=', row.nombre, 'texto_len=', texto.length);
     
-    // ✅ MENSAJES ESPECÍFICOS según el tipo de problema
     if (!texto || texto.length === 0) {
       return res.status(400).json({ 
         ok: false, 
@@ -676,7 +739,6 @@ app.post('/api/private/ask-doc', async function (req, res) {
 
     var prompt = 'Eres un asistente experto. Usa EXACTAMENTE el siguiente documento para responder. Si la respuesta no está en el documento, decilo claramente.\n\nDOCUMENTO:\n' + texto + '\n\nPREGUNTA:\n' + pregunta + '\n\nRESPONDE SOLO BASADO EN EL DOCUMENTO.';
 
-    // Siempre modelo local (qwen2.5:14b) para documentos. Groq NO se usa aquí.
     var respuesta = await usarModelo('resumen', prompt, { temperature: 0.0 });
 
     return res.status(200).json({ ok: true, respuesta });
@@ -687,12 +749,149 @@ app.post('/api/private/ask-doc', async function (req, res) {
 });
 
 // ============================================================================
+// RECUPERACIÓN DE CONTRASEÑA
+// ============================================================================
+
+const recoveryCodes = new Map();
+
+setInterval(() => {
+  const ahora = Date.now();
+  for (const [id, data] of recoveryCodes) {
+    if (ahora > data.expiry) recoveryCodes.delete(id);
+  }
+}, 5 * 60 * 1000);
+
+app.post('/auth/recuperar-password', async (req, res) => {
+  try {
+    const { correo } = req.body;
+    if (!correo) {
+      return res.status(400).json({ exitoso: false, error: 'Correo requerido' });
+    }
+
+    const usuario = db.prepare('SELECT id, NombreUsuario, Correo FROM Usuario WHERE Correo = ?').get(correo);
+    if (!usuario) {
+      return res.status(404).json({ exitoso: false, error: 'No existe una cuenta asociada a ese correo' });
+    }
+
+    const codigo = String(Math.floor(100000 + Math.random() * 900000));
+    const expiry = Date.now() + 10 * 60 * 1000; 
+
+    recoveryCodes.set(usuario.id, { codigo, expiry, intentos: 0 });
+
+    // ✅ CORREGIDO: usar la función importada directamente
+    const emailResult = await enviarCodigoRecuperacion(usuario.Correo, codigo);
+    if (!emailResult.exitoso) {
+      log.error(`❌ [RECOVERY] Falló envío de correo a ${usuario.Correo}`);
+      return res.status(500).json({ exitoso: false, error: 'No se pudo enviar el correo de recuperación. Intenta más tarde.' });
+    }
+
+    log.info(`📧 [RECOVERY] Código de recuperación enviado a: ${usuario.Correo}`);
+    return res.status(200).json({
+      exitoso: true,
+      mensaje: 'Código de recuperación enviado a tu correo. Expira en 10 minutos.',
+      idUsuario: usuario.id
+    });
+  } catch (error) {
+    log.error('❌ Error en /auth/recuperar-password:', error.message);
+    return res.status(500).json({ exitoso: false, error: 'Error del servidor' });
+  }
+});
+
+app.post('/auth/restablecer-password', async (req, res) => {
+  try {
+    const { idUsuario, codigo, nuevaContrasena } = req.body;
+
+    if (!idUsuario || !codigo || !nuevaContrasena) {
+      return res.status(400).json({ exitoso: false, error: 'Todos los campos son requeridos' });
+    }
+
+    if (nuevaContrasena.length < 6) {
+      return res.status(400).json({ exitoso: false, error: 'La contraseña debe tener al menos 6 caracteres' });
+    }
+
+    const usuario = db.prepare('SELECT id, NombreUsuario FROM Usuario WHERE id = ?').get(idUsuario);
+    if (!usuario) {
+      return res.status(404).json({ exitoso: false, error: 'Usuario no encontrado' });
+    }
+
+    const recoveryData = recoveryCodes.get(idUsuario);
+    if (!recoveryData) {
+      return res.status(400).json({ exitoso: false, error: 'No se solicitó recuperación para este usuario. Ingresa tu correo primero.' });
+    }
+
+    if (Date.now() > recoveryData.expiry) {
+      recoveryCodes.delete(idUsuario);
+      return res.status(400).json({ exitoso: false, error: 'El código ha expirado. Solicita uno nuevo.' });
+    }
+
+    recoveryData.intentos++;
+    if (recoveryData.intentos > 5) {
+      recoveryCodes.delete(idUsuario);
+      return res.status(429).json({ exitoso: false, error: 'Demasiados intentos incorrectos. Solicita un código nuevo.' });
+    }
+
+    if (recoveryData.codigo !== codigo) {
+      return res.status(400).json({ exitoso: false, error: `Código incorrecto. Intentos restantes: ${5 - recoveryData.intentos}` });
+    }
+
+    const resultado = await moduloUser.actualizarUsuario(idUsuario, {
+      contrasena: nuevaContrasena,
+      esAdmin: true
+    });
+
+    if (!resultado.exitoso) {
+      log.error(`❌ [RECOVERY] Error al actualizar contraseña para ${idUsuario}: ${resultado.error}`);
+      return res.status(400).json({ exitoso: false, error: resultado.error || 'No se pudo actualizar la contraseña' });
+    }
+
+    recoveryCodes.delete(idUsuario);
+
+    log.info(`✅ [RECOVERY] Contraseña restablecida exitosamente para: ${usuario.NombreUsuario}`);
+    return res.status(200).json({ exitoso: true, mensaje: 'Contraseña actualizada exitosamente' });
+  } catch (error) {
+    log.error('❌ Error en /auth/restablecer-password:', error.message);
+    return res.status(500).json({ exitoso: false, error: 'Error del servidor' });
+  }
+});
+
+// ============================================================================
+// INTERVALOS DE LIMPIEZA Y MANTENIMIENTO
+// ============================================================================
+
+// ✅ Desconectar usuarios inactivos cada 5 minutos (45 min de inactividad)
+setInterval(() => {
+  moduloUser.desconectarUsuariosInactivos(45);
+}, 5 * 60 * 1000);
+
+// Ejecutar limpieza al arrancar
+setTimeout(() => {
+  moduloUser.desconectarUsuariosInactivos(45);
+}, 10000);
+
+// ============================================================================
+// ERROR HANDLER — Debe conservar headers CORS en respuestas de error
+// ============================================================================
+app.use((err, req, res, next) => {
+  if (!res.get('Access-Control-Allow-Origin')) {
+    res.setHeader('Access-Control-Allow-Origin', 'http://localhost:2054');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+
+  log.error('❌ [ERROR HANDLER]', err.message);
+  
+  res.status(err.status || 500).json({
+    exitoso: false,
+    error: 'Error interno del servidor',
+    codigo: 'ERROR_SERVIDOR'
+  });
+});
+
+// ============================================================================
 // INICIO DEL SERVIDOR CON PRECALENTAMIENTO
 // ============================================================================
 app.listen(PORT, async () => {
   log.info(`🚀 ApiPrivada escuchando en http://localhost:${PORT}`);
   
-  // ✅ Precalentar modelos calientes al arrancar
   await precalentarModelos();
   
   log.info(`📊 Estado: ${JSON.stringify(obtenerEstado())}`);

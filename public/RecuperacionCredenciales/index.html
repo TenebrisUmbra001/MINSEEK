@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recuperar Contraseña</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- Fondos decorativos -->
+    <div class="bg-glow g1"></div>
+    <div class="bg-glow g2"></div>
+
+    <header class="header">
+        <h1>Recuperar <span>Contraseña</span></h1>
+        <p>Restablece el acceso a tu cuenta con tu correo Zimbra</p>
+    </header>
+
+    <main>
+        <div class="recovery-card">
+
+            <!-- Indicador de pasos -->
+            <div class="steps-bar">
+                <div class="step-item active" id="stepInd1">
+                    <div class="step-num">1</div>
+                    <div class="step-label">Correo</div>
+                </div>
+                <div class="step-line" id="line1"></div>
+                <div class="step-item" id="stepInd2">
+                    <div class="step-num">2</div>
+                    <div class="step-label">Verificar</div>
+                </div>
+                <div class="step-line" id="line2"></div>
+                <div class="step-item" id="stepInd3">
+                    <div class="step-num">3</div>
+                    <div class="step-label">Listo</div>
+                </div>
+            </div>
+
+            <!-- ===== PASO 1: Ingresar correo ===== -->
+            <section class="step-panel" id="panel1">
+                <div class="panel-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#2ecc71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="4" width="20" height="16" rx="2"/>
+                        <path d="M22 4L12 13L2 4"/>
+                    </svg>
+                </div>
+                <h2>Ingresa tu correo Zimbra</h2>
+                <p class="panel-desc">Enviaremos un código de verificación al correo con el que registraste tu cuenta</p>
+
+                <div class="input-group">
+                    <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="4" width="20" height="16" rx="2"/>
+                        <path d="M22 4L12 13L2 4"/>
+                    </svg>
+                    <input type="email" id="emailInput" placeholder="usuario@mail.das.pdr" autocomplete="email">
+                </div>
+
+                <p class="inline-msg" id="emailMsg"></p>
+
+                <button class="btn-primary" id="btnSendCode" type="button">
+                    <span class="btn-text">Enviar Código</span>
+                    <svg class="btn-spinner hidden" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.25)" stroke-width="3" fill="none"/>
+                        <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </section>
+
+            <!-- ===== PASO 2: Código + Nueva contraseña ===== -->
+            <section class="step-panel hidden" id="panel2">
+                <div class="panel-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#2ecc71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                </div>
+                <h2>Verifica tu identidad</h2>
+                <p class="panel-desc">Ingresa el código de 6 dígitos y define tu nueva contraseña</p>
+
+                <!-- Código -->
+                <div class="input-group">
+                    <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                    </svg>
+                    <input type="text" id="codeInput" placeholder="Código de 6 dígitos" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+                </div>
+
+                <!-- Reenviar código -->
+                <div class="resend-row">
+                    <button class="btn-text-link" id="btnResend" type="button" disabled>
+                        Reenviar código
+                    </button>
+                    <span class="resend-timer" id="resendTimer"></span>
+                </div>
+
+                <!-- Nueva contraseña -->
+                <div class="input-group has-toggle">
+                    <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                    <input type="password" id="newPassInput" placeholder="Nueva contraseña" autocomplete="new-password">
+                    <button class="toggle-pass" type="button" data-target="newPassInput" aria-label="Mostrar contraseña">
+                        <svg class="ico-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                        <svg class="ico-eye-off hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                            <line x1="1" y1="1" x2="23" y2="23"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="strength-bar" id="strengthBar">
+                    <div class="strength-fill" id="strengthFill"></div>
+                </div>
+                <p class="strength-text" id="strengthText"></p>
+
+                <!-- Confirmar contraseña -->
+                <div class="input-group has-toggle">
+                    <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                        <circle cx="12" cy="16" r="1"/>
+                    </svg>
+                    <input type="password" id="confirmPassInput" placeholder="Confirmar contraseña" autocomplete="new-password">
+                    <button class="toggle-pass" type="button" data-target="confirmPassInput" aria-label="Mostrar contraseña">
+                        <svg class="ico-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                        <svg class="ico-eye-off hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                            <line x1="1" y1="1" x2="23" y2="23"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <p class="inline-msg" id="step2Msg"></p>
+
+                <div class="btn-row">
+                    <button class="btn-secondary" type="button" id="btnBack">
+                        Atrás
+                    </button>
+                    <button class="btn-primary" id="btnChangePass" type="button">
+                        <span class="btn-text">Cambiar Contraseña</span>
+                        <svg class="btn-spinner hidden" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.25)" stroke-width="3" fill="none"/>
+                            <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                </div>
+            </section>
+
+            <!-- ===== PASO 3: Éxito ===== -->
+            <section class="step-panel hidden" id="panel3">
+                <div class="panel-icon success-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#2ecc71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M8 12l3 3 5-5"/>
+                    </svg>
+                </div>
+                <h2>Contraseña actualizada</h2>
+                <p class="panel-desc">Tu contraseña ha sido cambiada exitosamente. Ya puedes iniciar sesión con tu nueva contraseña.</p>
+                <a href="../InicioSesion/index.html" class="btn-primary btn-link-primary">
+                    Ir a Iniciar Sesión
+                </a>
+            </section>
+
+            <!-- Footer del card -->
+            <div class="card-footer">
+                <a href="../InicioSesion/index.html" class="back-link">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                        <line x1="19" y1="12" x2="5" y2="12"/>
+                        <polyline points="12 19 5 12 12 5"/>
+                    </svg>
+                    Volver al inicio de sesión
+                </a>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2026 CCR MININT Pinar del Rio. Todos los derechos reservados.</p>
+    </footer>
+
+    <script src="main.js"></script>
+</body>
+
+</html>
