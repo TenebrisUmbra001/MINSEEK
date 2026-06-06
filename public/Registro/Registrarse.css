@@ -149,12 +149,12 @@ form .input-group:nth-child(4) { animation: fieldIn 0.4s ease-out 0.25s both; }
 @keyframes cardIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes fieldIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
 
-/* ── ESTILOS DEL MODAL (Actualizado a tema oscuro) ── */
+/* ── ESTILOS DEL MODAL ── */
 .modal-overlay {
     display: none;
     position: fixed;
     top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(0, 0, 0, 0.7); /* Fondo más oscuro para bloquear el fondo */
+    background: rgba(0, 0, 0, 0.7);
     z-index: 1000;
     justify-content: center;
     align-items: center;
@@ -181,7 +181,7 @@ form .input-group:nth-child(4) { animation: fieldIn 0.4s ease-out 0.25s both; }
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.1);
     color: #ffffff;
-    text-align: center; /* Centrar texto del código */
+    text-align: center;
     font-size: 1.2rem;
     letter-spacing: 4px;
     font-weight: 600;
@@ -191,7 +191,7 @@ form .input-group:nth-child(4) { animation: fieldIn 0.4s ease-out 0.25s both; }
 .timer-texto { color: rgba(255,255,255,0.4); font-size: 0.75rem; margin-top: 4px; margin-bottom: 16px; }
 
 .btn-validate {
-    width: 100%; height: 42px; margin-top: 4px; border: 1px solid rgba(46, 204, 113, 0.25);
+    width: 100%; height: 42px; margin-top: 4px; margin-bottom: 10px; border: 1px solid rgba(46, 204, 113, 0.25); /* ✅ margin-bottom en vez de gap */
     border-radius: 12px; background: rgba(46, 204, 113, 0.08); color: rgba(255, 255, 255, 0.85);
     font-size: 0.85rem; font-weight: 500; cursor: pointer; position: relative; overflow: hidden;
     transition: all 0.4s ease; letter-spacing: 0.2px;
@@ -207,7 +207,7 @@ form .input-group:nth-child(4) { animation: fieldIn 0.4s ease-out 0.25s both; }
 .btn-validate:active { transform: translateY(0); }
 .btn-validate:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
 
-.modal-botones { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.modal-botones { display: flex; flex-direction: column; margin-top: 10px; } /* ✅ Eliminado gap: 10px; */
 .btn-cerrar-modal { background: none; border: none; color: rgba(255,255,255,0.4); cursor: pointer; font-size: 0.85rem; text-decoration: underline; transition: color 0.2s ease; margin-top: 5px; }
 .btn-cerrar-modal:hover { color: #e74c3c; }
 

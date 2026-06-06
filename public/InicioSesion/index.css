@@ -7,7 +7,6 @@
 
 body {
     background: #041a0a;
-    /* Fallback sólido por si falla el gradiente */
     background: linear-gradient(160deg, #020e02 0%, #052a05 30%, #073d1a 50%, #0a1f4a 75%, #030b2e 100%);
     min-height: 100vh;
     width: 100vw;
@@ -42,9 +41,9 @@ body {
 
 .header h1 span {
     background: linear-gradient(135deg, #2ecc71, #3498db);
+    -webkit-background-clip: text; /* ✅ Necesario para FF43-45 */
     background-clip: text;
     -webkit-text-fill-color: transparent;
-    /* Aún se requiere para el texto recortado */
 }
 
 .header p {
@@ -70,7 +69,6 @@ main {
 .login-card {
     width: 100%;
     max-width: 400px;
-    /* Opacidad ajustada porque backdrop-filter NO existe en Firefox 45 */
     background: #091e15;
     background: linear-gradient(165deg, rgba(10, 40, 80, 0.85), rgba(5, 30, 15, 0.9));
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -86,7 +84,6 @@ main {
         inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-/* Icono decorativo */
 .login-icon {
     max-width: 56px;
     max-height: 56px;
@@ -99,7 +96,6 @@ main {
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     box-sizing: border-box;
-
 }
 
 .login-icon img {   
@@ -110,7 +106,6 @@ main {
     stroke-width: 1.8;
     stroke-linecap: round;
     stroke-linejoin: round;
-
 }
 
 .login-card h2 {
@@ -168,7 +163,6 @@ main {
     box-shadow: 0 0 0 3px rgba(46, 204, 113, 0.08);
 }
 
-/* Funciona en FF45 gracias a que el SVG está antes del Input en el HTML */
 .input-group input:focus+svg {
     stroke: rgba(46, 204, 113, 0.7);
 }
@@ -198,7 +192,6 @@ main {
     left: 0;
     right: 0;
     bottom: 0;
-    /* 'inset: 0' no es soportado en FF45 */
     background: linear-gradient(135deg, #2ecc71, #3498db);
     opacity: 0;
     transition: opacity 0.4s ease;
@@ -230,7 +223,6 @@ main {
     color: rgba(255, 255, 255, 0.35);
 }
 
-/* 'gap' no es soportado en flexbox para FF45, se usa margen */
 .links a,
 .links .separator {
     margin: 0 3px;

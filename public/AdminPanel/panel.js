@@ -1,102 +1,100 @@
 // panel.js
 
-/* ── Protección: Verificar que hay sesión de Administrador activa ── */
+/* ── Protección ── */
 (function verificarAdmin() {
     var esAdmin = sessionStorage.getItem('esAdmin');
     var idUsuario = sessionStorage.getItem('idUsuario');
-    
-    // Si no es admin o no hay sesión, lo echamos al login
     if (esAdmin !== 'true' || !idUsuario) {
         window.location.replace('AdPanel.html'); 
         return;
     }
 })();
 
-// URL base de tu API Pública
-const API_URL = '/api';
+var API_URL = '/api';
+var allUsers = [];
 
-// Variable global para guardar todos los usuarios y filtrarlos en el buscador
-let allUsers = [];
-
-// Cargar usuarios al iniciar
 document.addEventListener('DOMContentLoaded', cargarUsuarios);
 
 // ── Evento del buscador ──
 document.getElementById('searchInput').addEventListener('input', function(e) {
-    const searchTerm = e.target.value.toLowerCase();
+    var searchTerm = e.target.value.toLowerCase();
+    var filteredUsers = [];
     
-    // Filtrar los usuarios guardados en memoria
-    const filteredUsers = allUsers.filter(user => {
-        const usuario = (user.NombreUsuario || '').toLowerCase();
-        const correo = (user.Correo || '').toLowerCase();
-        return usuario.includes(searchTerm) || correo.includes(searchTerm);
-    });
+    for (var i = 0; i < allUsers.length; i++) {
+        var user = allUsers[i];
+        var usuario = (user.NombreUsuario || '').toLowerCase();
+        var correo = (user.Correo || '').toLowerCase();
+        // ✅ FIX: indexOf en vez de includes
+        if (usuario.indexOf(searchTerm) !== -1 || correo.indexOf(searchTerm) !== -1) {
+            filteredUsers.push(user);
+        }
+    }
 
     renderizarTabla(filteredUsers);
 });
 
 // ── Obtener usuarios de la API ──
-async function cargarUsuarios() {
-    try {
-        const response = await fetch(`${API_URL}/usuarios`, {
-            headers: { 'x-user-id': sessionStorage.getItem('idUsuario') || '' } // 🔒 Seguridad extra para el backend
-        });
-        const data = await response.json();
-        
-        if (data.exitoso && data.usuarios.length > 0) {
-            allUsers = data.usuarios; // Guardamos en memoria
-            renderizarTabla(allUsers); // Renderizamos todos
+function cargarUsuarios() {
+    fetch(API_URL + '/usuarios', {
+        headers: { 'x-user-id': sessionStorage.getItem('idUsuario') || '' }
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+        if (data.exitoso && data.usuarios && data.usuarios.length > 0) {
+            allUsers = data.usuarios;
+            renderizarTabla(allUsers);
         } else {
-            const tbody = document.getElementById('tabla-usuarios');
+            var tbody = document.getElementById('tabla-usuarios');
             tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:rgba(255,255,255,0.4);">No hay usuarios registrados</td></tr>';
         }
-    } catch (error) {
+    })
+    .catch(function(error) {
         console.error('Error al cargar usuarios:', error);
         alert('Error al conectar con el servidor para obtener usuarios.');
-    }
+    });
 }
 
-// ── Renderizar la tabla con los datos dados ──
+// ── Renderizar la tabla ──
 function renderizarTabla(usuarios) {
-    const tbody = document.getElementById('tabla-usuarios');
+    var tbody = document.getElementById('tabla-usuarios');
     tbody.innerHTML = '';
 
-    if (usuarios.length === 0) {
+    if (!usuarios || usuarios.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:rgba(255,255,255,0.4);">No se encontraron usuarios</td></tr>';
         return;
     }
 
-    usuarios.forEach(user => {
-        const tr = document.createElement('tr');
+    for (var i = 0; i < usuarios.length; i++) {
+        var user = usuarios[i];
+        var tr = document.createElement('tr');
         
-        // Determinar estado (En la BD SQLite los booleanos son 1 o 0)
-        const estadoClass = user.EstaConectado === 1 ? 'badge-active' : 'badge-inactive';
-        const estadoText = user.EstaConectado === 1 ? 'Conectado' : 'Desconectado';
+        var estadoClass = user.EstaConectado === 1 ? 'badge-active' : 'badge-inactive';
+        var estadoText = user.EstaConectado === 1 ? 'Conectado' : 'Desconectado';
         
-        // Formatear fecha de última conexión
-        let ultimaConexion = 'Nunca';
+        var ultimaConexion = 'Nunca';
         if (user.FechaUltimaConexion) {
             try {
-                const fecha = new Date(user.FechaUltimaConexion + 'Z'); // Añadir Z para UTC si viene sin ella
+                var fecha = new Date(user.FechaUltimaConexion + 'Z');
                 ultimaConexion = fecha.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
             } catch(e) {
                 ultimaConexion = user.FechaUltimaConexion;
             }
         }
 
-        tr.innerHTML = `
-            <td>${user.NombreUsuario}</td>
-            <td>${user.Correo}</td>
-            <td>${user.NombreVisible || 'N/A'}</td>
-            <td><span class="badge ${estadoClass}">${estadoText}</span></td>
-            <td>${ultimaConexion}</td>
-            <td>
-                <button class="btn-action btn-edit" onclick="abrirModalEditar('${user.id}', '${user.NombreUsuario}', '${user.Correo}', '${user.NombreVisible || ''}')">Editar</button>
-                <button class="btn-action btn-delete" onclick="abrirModalEliminar('${user.id}', '${user.NombreUsuario}')">Eliminar</button>
-            </td>
-        `;
+        var nombreVisible = user.NombreVisible || 'N/A';
+
+        tr.innerHTML = '<td>' + user.NombreUsuario + '</td>' +
+            '<td>' + user.Correo + '</td>' +
+            '<td>' + nombreVisible + '</td>' +
+            '<td><span class="badge ' + estadoClass + '">' + estadoText + '</span></td>' +
+            '<td>' + ultimaConexion + '</td>' +
+            '<td>' +
+                '<button class="btn-action btn-edit" onclick="abrirModalEditar(\'' + user.id + '\', \'' + user.NombreUsuario + '\', \'' + user.Correo + '\', \'' + nombreVisible + '\')">Editar</button>' +
+                '<button class="btn-action btn-delete" onclick="abrirModalEliminar(\'' + user.id + '\', \'' + user.NombreUsuario + '\')">Eliminar</button>' +
+            '</td>';
+            
         tbody.appendChild(tr);
-    });
+    }
 }
 
 // --- LÓGICA MODAL CREAR/EDITAR ---
@@ -117,7 +115,6 @@ function abrirModalEditar(id, usuario, correo, nombreVisible) {
     document.getElementById('input-correo').value = correo;
     document.getElementById('input-nombre-visible').value = nombreVisible;
     
-    // Al editar, la contraseña no es obligatoria cambiarla
     document.getElementById('grupo-password').style.display = 'block';
     document.getElementById('input-password').value = '';
     document.getElementById('input-password').required = false;
@@ -130,59 +127,55 @@ function cerrarModal() {
     document.getElementById('modal-usuario').classList.remove('active');
 }
 
-async function guardarUsuario(event) {
+function guardarUsuario(event) {
     event.preventDefault();
     
-    const id = document.getElementById('usuario-id').value;
-    const usuario = document.getElementById('input-usuario').value;
-    const correo = document.getElementById('input-correo').value;
-    const nombreVisible = document.getElementById('input-nombre-visible').value;
-    const contrasena = document.getElementById('input-password').value;
+    var id = document.getElementById('usuario-id').value;
+    var usuario = document.getElementById('input-usuario').value;
+    var correo = document.getElementById('input-correo').value;
+    var nombreVisible = document.getElementById('input-nombre-visible').value;
+    var contrasena = document.getElementById('input-password').value;
 
-    // 🔒 Headers con ID del admin para validar en el backend
-    const myHeaders = {
+    var myHeaders = {
         'Content-Type': 'application/json',
         'x-user-id': sessionStorage.getItem('idUsuario') || ''
     };
 
-    try {
-        let response;
-        if (id) {
-            // EDITAR (Usamos la ruta de admin)
-            const body = { idUsuario: id, nombreVisible: nombreVisible };
-            if (contrasena) body.contrasena = contrasena; // Solo se envía si se llenó
-            
-            response = await fetch(`${API_URL}/admin/actualizar-usuario`, {
-                method: 'POST',
-                headers: myHeaders,
-                body: JSON.stringify(body)
-            });
-        } else {
-            // CREAR
-            if (!contrasena) {
-                alert('La contraseña es requerida para nuevos usuarios');
-                return;
-            }
-            response = await fetch(`${API_URL}/registro`, {
-                method: 'POST',
-                headers: myHeaders,
-                body: JSON.stringify({ usuario, correo, contrasena })
-            });
-        }
+    var fetchUrl = '';
+    var fetchBody = {};
 
-        const data = await response.json();
-        
+    if (id) {
+        fetchUrl = API_URL + '/admin/actualizar-usuario';
+        fetchBody = { idUsuario: id, nombreVisible: nombreVisible };
+        if (contrasena) fetchBody.contrasena = contrasena;
+    } else {
+        if (!contrasena) {
+            alert('La contraseña es requerida para nuevos usuarios');
+            return;
+        }
+        fetchUrl = API_URL + '/registro';
+        fetchBody = { usuario: usuario, correo: correo, contrasena: contrasena };
+    }
+
+    fetch(fetchUrl, {
+        method: 'POST',
+        headers: myHeaders,
+        body: JSON.stringify(fetchBody)
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
         if (data.exitoso || data.idUsuario) {
             alert(id ? 'Usuario actualizado correctamente' : 'Usuario creado correctamente');
             cerrarModal();
-            cargarUsuarios(); // Refrescar la tabla
+            cargarUsuarios();
         } else {
             alert('Error: ' + (data.error || 'No se pudo guardar el usuario'));
         }
-    } catch (error) {
+    })
+    .catch(function(error) {
         console.error('Error al guardar:', error);
         alert('Error de conexión al guardar');
-    }
+    });
 }
 
 // --- LÓGICA MODAL ELIMINAR ---
@@ -196,32 +189,31 @@ function cerrarModalEliminar() {
     document.getElementById('modal-eliminar').classList.remove('active');
 }
 
-async function confirmarEliminar() {
-    const id = document.getElementById('eliminar-id').value;
+function confirmarEliminar() {
+    var id = document.getElementById('eliminar-id').value;
 
-    // 🔒 Headers con ID del admin para validar en el backend
-    const myHeaders = {
+    var myHeaders = {
         'Content-Type': 'application/json',
         'x-user-id': sessionStorage.getItem('idUsuario') || ''
     };
 
-    try {
-        const response = await fetch(`${API_URL}/admin/eliminar-usuario`, {
-            method: 'POST',
-            headers: myHeaders,
-            body: JSON.stringify({ idUsuario: id })
-        });
-        const data = await response.json();
-        
+    fetch(API_URL + '/admin/eliminar-usuario', {
+        method: 'POST',
+        headers: myHeaders,
+        body: JSON.stringify({ idUsuario: id })
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
         if (data.exitoso) {
             alert('Usuario eliminado correctamente');
             cerrarModalEliminar();
-            cargarUsuarios(); // Refrescar la tabla
+            cargarUsuarios();
         } else {
             alert('Error: ' + (data.error || 'No se pudo eliminar'));
         }
-    } catch (error) {
+    })
+    .catch(function(error) {
         console.error('Error al eliminar:', error);
         alert('Error de conexión al eliminar');
-    }
+    });
 }

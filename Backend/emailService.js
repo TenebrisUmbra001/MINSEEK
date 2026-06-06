@@ -2,19 +2,19 @@
 const nodemailer = require('nodemailer');
 
 const ZIMBRA_CONFIG = {
-    host: 'mail.das.pdr', 
-    port: 465,            
-    secure: true,         
+    host: 'mail.das.pdr',
+    port: 465,
+    secure: true,
     auth: {
-        user: 'no-reply@das.pdr', 
-        pass: 'tu_contraseña_aqui' 
+        user: 'no-reply@das.pdr',
+        pass: 'tu_contraseña_aqui'
     },
     tls: {
         rejectUnauthorized: false
     },
     // ✅ NUEVO: Forzar a Nodemailer a darnos logs detallados de la conversación SMTP
-    logger: true, 
-    debug: true  
+    logger: true,
+    debug: true
 };
 
 console.log('📧 [EMAIL] Creando transportador de correo Zimbra...');
@@ -41,13 +41,13 @@ transporter.verify(function (error, success) {
 
 async function enviarCodigoVerificacion(correoDestino, codigo) {
     console.log(`📧 [EMAIL] Iniciando proceso de envío a: ${correoDestino}`);
-    
+
     try {
         const mailOptions = {
-            from: `"Sistema IACCR" <${ZIMBRA_CONFIG.auth.user}>`,
+            from: `"CCRDEV TEAM" <${ZIMBRA_CONFIG.auth.user}>`,
             to: correoDestino,
-            subject: 'Código de Verificación - CHATBOT con IACCR',
-            text: `Gracias por usar nuestro servicio de CHATBOT con IACCR. Tu código de verificación de la cuenta es: ${codigo}. Expira en 10 minutos.`,
+            subject: 'Código de Verificación para la cuenta del  - CHATBOT con IACCR',
+            text: `Gracias por usar nuestro servicio de IACCR cualquier problema no dude en contactarnos al Centro de Datos Del ORGANO DE ICC . Su código de verificación de la cuenta es: ${codigo}. Expira en 10 minutos.`,
             html: `
                 <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #ddd; border-radius: 8px; max-width: 500px; margin: auto; background-color: #f9f9f9;">
                     <div style="background-color: #2ecc71; padding: 10px; border-radius: 8px 8px 0 0; text-align: center;">
@@ -68,20 +68,20 @@ async function enviarCodigoVerificacion(correoDestino, codigo) {
         };
 
         const info = await transporter.sendMail(mailOptions);
-        
+
         console.log('✅ [EMAIL] Correo aceptado por Zimbra para entrega.');
         console.log(`   -> Message ID: ${info.messageId}`);
         console.log(`   -> Respuesta del servidor: ${info.response}`);
-        
+
         return { exitoso: true };
-        
+
     } catch (error) {
         console.error('❌ [EMAIL] ERROR ENVIANDO CORREO:');
         console.error(`   -> Destino: ${correoDestino}`);
         console.error(`   -> Código de error Nodemailer: ${error.code || 'Desconocido'}`);
         console.error(`   -> Comando SMTP fallido: ${error.command || 'N/A'}`);
         console.error(`   -> Mensaje: ${error.message}`);
-        
+
         return { exitoso: false, error: error.message, code: error.code };
     }
 }
@@ -96,7 +96,7 @@ async function enviarCodigoRecuperacion(correoDestino, codigo) {
 
     try {
         const mailOptions = {
-            from: `"Sistema IACCR" <${ZIMBRA_CONFIG.auth.user}>`,
+            from: `"CCRDEV TEAM" <${ZIMBRA_CONFIG.auth.user}>`,
             to: correoDestino,
             subject: 'Código de Recuperación de Contraseña - CHATBOT con IACCR',
             text: `Has solicitado restablecer tu contraseña. Tu código de recuperación es: ${codigo}. Expira en 10 minutos. Si no solicitaste este cambio, ignora este correo.`,

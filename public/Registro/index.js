@@ -77,7 +77,7 @@ function CerrarModal(porTimeout) {
 
     if (porTimeout) {
         alert("La ventana de validación se cerró por inactividad. Debe intentar registrarse nuevamente.");
-        sessionStorage.removeItem('idUsuarioRegistro'); // Limpiar sesión si expira
+        sessionStorage.removeItem('idUsuarioRegistro');
     }
 }
 
@@ -85,11 +85,17 @@ function CerrarModal(porTimeout) {
    PASO 1: REGISTRO COMPLETO - Enviar datos a la API
 ============================================================================ */
 
-async function RegistroCuenta() {
-    const usuario = document.getElementById("Usuario")?.value.trim();
-    const correo = document.getElementById("Correo")?.value.trim();
-    const contraseña = document.getElementById("Contraseña")?.value;
-    const confirmar = document.getElementById("ConfirmarContraseña")?.value;
+function RegistroCuenta() {
+    // ✅ Reemplazo de optional chaining (?.) por validaciones clásicas
+    var usuarioEl = document.getElementById("Usuario");
+    var correoEl = document.getElementById("Correo");
+    var contraseñaEl = document.getElementById("Contraseña");
+    var confirmarEl = document.getElementById("ConfirmarContraseña");
+
+    var usuario = usuarioEl ? usuarioEl.value.trim() : "";
+    var correo = correoEl ? correoEl.value.trim() : "";
+    var contraseña = contraseñaEl ? contraseñaEl.value : "";
+    var confirmar = confirmarEl ? confirmarEl.value : "";
 
     if (!usuario || !correo || !contraseña || !confirmar) {
         alert("Por favor, complete todos los campos.");
@@ -97,22 +103,23 @@ async function RegistroCuenta() {
     }
 
     // Validar dominio del correo
-    const dominioCorrecto = "mail.das.pdr";
-    const partes = correo.split("@");
+    var dominioCorrecto = "mail.das.pdr";
+    var partes = correo.split("@");
     
     if (partes.length !== 2) {
         alert("El formato del correo es incorrecto.");
         return;
     }
 
-    const [usuarioCorreo, dominioIngresado] = partes;
+    var usuarioCorreo = partes[0];
+    var dominioIngresado = partes[1];
 
     if (dominioIngresado !== dominioCorrecto) {
         alert("El correo debe terminar en @" + dominioCorrecto);
         return;
     }
 
-    const regexCorreo = /^[a-zA-Z0-9._-]+$/;
+    var regexCorreo = /^[a-zA-Z0-9._-]+$/;
     if (!regexCorreo.test(usuarioCorreo)) {
         alert("El correo contiene caracteres inválidos.");
         return;
@@ -134,74 +141,85 @@ async function RegistroCuenta() {
     }
 
     // Mostrar loader
-    const btnRegistrar = document.querySelector('.btn-register');
-    const spanTexto = btnRegistrar.querySelector('span');
-    const textoOriginal = spanTexto.textContent;
+    var btnRegistrar = document.querySelector('.btn-register');
+    var spanTexto = btnRegistrar.querySelector('span');
+    var textoOriginal = spanTexto.textContent;
     
     btnRegistrar.disabled = true;
     spanTexto.textContent = 'Registrando...';
 
-    try {
-        // 1. Enviar solicitud de registro a la API
-        const response = await fetch('/api/registro', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ usuario, correo, contrasena: contraseña })
-        });
+    // ✅ Reemplazo de .finally() por función auxiliar
+    function restaurarBoton() {
+        btnRegistrar.disabled = false;
+        spanTexto.textContent = textoOriginal;
+    }
 
-        const data = await response.json();
-
+    // 1. Enviar solicitud de registro a la API
+    fetch('/api/registro', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usuario: usuario, correo: correo, contrasena: contraseña })
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
         if (!data.exitoso) {
             alert('Error: ' + (data.error || 'No se pudo registrar'));
-            return;
+            restaurarBoton();
+            return; // Detener la cadena
         }
 
-        const idUsuario = data.idUsuario;
+        var idUsuario = data.idUsuario;
         console.log('✅ Usuario registrado con ID:', idUsuario);
 
         // 2. Generar código de validación
         spanTexto.textContent = 'Generando código...';
 
-        const respCodigo = await fetch('/api/generar-codigo', {
+        fetch('/api/generar-codigo', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ idUsuario: idUsuario })
+        })
+        .then(function(respCodigo) { return respCodigo.json(); })
+        .then(function(dataCodigo) {
+            if (!dataCodigo.exitoso) {
+                alert('Error generando código: ' + (dataCodigo.error || 'Intente de nuevo'));
+                restaurarBoton();
+                return;
+            }
+
+            console.log('📧 Código generado (dev mode):', dataCodigo.codigo);
+
+            // 3. Guardar idUsuario en sessionStorage
+            sessionStorage.setItem('idUsuarioRegistro', idUsuario);
+
+            // 4. Mostrar modal para ingreso de código
+            MostrarModalCodigo();
+            restaurarBoton();
+        })
+        .catch(function(errorCodigo) {
+            console.error('Error generando código:', errorCodigo);
+            alert('Error al generar el código. Intenta más tarde.');
+            restaurarBoton();
         });
 
-        const dataCodigo = await respCodigo.json();
-
-        if (!dataCodigo.exitoso) {
-            alert('Error generando código: ' + (dataCodigo.error || 'Intente de nuevo'));
-            return;
-        }
-
-        console.log('📧 Código generado (dev mode):', dataCodigo.codigo);
-
-        // 3. Guardar idUsuario en sessionStorage
-        sessionStorage.setItem('idUsuarioRegistro', idUsuario);
-
-        // 4. Mostrar modal para ingreso de código
-        MostrarModalCodigo();
-
-    } catch (error) {
+    })
+    .catch(function(error) {
         console.error('Error en registro:', error);
         alert('Error al conectar con el servidor. Intenta más tarde.');
-    } finally {
-        btnRegistrar.disabled = false;
-        spanTexto.textContent = textoOriginal;
-    }
+        restaurarBoton();
+    });
 }
 
 /* ========================================
    PASO 2: VALIDAR CÓDIGO INGRESADO
 ======================================== */
 
-async function ValidarCodigo() {
-    const codigo = document.getElementById("Codigo").value.trim();
-    const intentosTexto = document.getElementById('intentosModal');
-    const inputCodigo = document.getElementById("Codigo");
-    const btnValidar = document.getElementById('btnValidarCodigo');
-    const idUsuario = sessionStorage.getItem('idUsuarioRegistro'); // <--- AQUÍ OBTIENE EL ID
+function ValidarCodigo() {
+    var codigo = document.getElementById("Codigo").value.trim();
+    var intentosTexto = document.getElementById('intentosModal');
+    var inputCodigo = document.getElementById("Codigo");
+    var btnValidar = document.getElementById('btnValidarCodigo');
+    var idUsuario = sessionStorage.getItem('idUsuarioRegistro');
 
     if (!codigo) {
         alert("Por favor, ingrese el código de seguridad.");
@@ -213,7 +231,6 @@ async function ValidarCodigo() {
         return;
     }
 
-    // ✅ PREVENIR EL NULL: Si se perdió el ID, mostrar error claro
     if (!idUsuario) {
         alert("Error de sesión: No se encontró tu ID de usuario. Por favor, cierra este modal e intenta registrarte de nuevo.");
         return;
@@ -222,18 +239,24 @@ async function ValidarCodigo() {
     btnValidar.disabled = true;
     btnValidar.textContent = 'Validando...';
 
-    try {
-        const response = await fetch('/api/validar-codigo', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                idUsuario: idUsuario, // <--- AQUÍ YA NO ES NULL
-                codigo: codigo
-            })
-        });
+    // ✅ Reemplazo de .finally()
+    function restaurarBoton() {
+        if (!btnValidar.disabled) { // Solo restaurar si no está bloqueado por intentos
+            btnValidar.disabled = false;
+            btnValidar.textContent = 'Validar Código';
+        }
+    }
 
-        const data = await response.json();
-
+    fetch('/api/validar-codigo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            idUsuario: idUsuario,
+            codigo: codigo
+        })
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
         if (data.exitoso) {
             CerrarModal(false);
             alert('✅ ' + data.mensaje + '\n\nAhora puedes iniciar sesión.');
@@ -245,8 +268,8 @@ async function ValidarCodigo() {
             document.getElementById("ConfirmarContraseña").value = '';
             sessionStorage.removeItem('idUsuarioRegistro');
             
-            // Redirigir a login
-            setTimeout(() => {
+            // Redirigir a login (reemplazo de arrow function)
+            setTimeout(function() {
                 window.location.href = '../InicioSesion/index.html';
             }, 2000);
         } else {
@@ -259,7 +282,11 @@ async function ValidarCodigo() {
                 if (data.intentosRestantes === 0) {
                     inputCodigo.disabled = true;
                     btnValidar.disabled = true;
-                    setTimeout(() => { CerrarModal(true); inputCodigo.disabled = false; btnValidar.disabled = false; }, 3000);
+                    setTimeout(function() { 
+                        CerrarModal(true); 
+                        inputCodigo.disabled = false; 
+                        btnValidar.disabled = false; 
+                    }, 3000);
                     return;
                 }
             } else {
@@ -268,14 +295,12 @@ async function ValidarCodigo() {
             
             inputCodigo.value = '';
             inputCodigo.focus();
+            restaurarBoton();
         }
-    } catch (error) {
+    })
+    .catch(function(error) {
         console.error('Error validando código:', error);
         alert('Error al validar código. Intenta más tarde.');
-    } finally {
-        if (!btnValidar.disabled) { // Solo restaurar si no está bloqueado por intentos
-            btnValidar.disabled = false;
-            btnValidar.textContent = 'Validar Código';
-        }
-    }
+        restaurarBoton();
+    });
 }

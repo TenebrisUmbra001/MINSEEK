@@ -1,31 +1,30 @@
 /**
- * Recuperación de Contraseña — Lógica del frontend
- * Se comunica con la API Pública (server.js) que proxya a la API Privada.
+ * Recuperación de Contraseña — Lógica del frontend compatible con FF43+
  */
 
-const API_BASE = '';  // Relativo al mismo origen (server.js sirve esto)
+var API_BASE = '';  // Relativo al mismo origen
 
 // Estado global del flujo
-let idUsuarioRecuperacion = null;
-let correoRecuperacion = null;
-let resendInterval = null;
+var idUsuarioRecuperacion = null;
+var correoRecuperacion = null;
+var resendInterval = null;
 
 // ── Referencias DOM ──
-const emailInput       = document.getElementById('emailInput');
-const emailMsg         = document.getElementById('emailMsg');
-const btnSendCode      = document.getElementById('btnSendCode');
+var emailInput       = document.getElementById('emailInput');
+var emailMsg         = document.getElementById('emailMsg');
+var btnSendCode      = document.getElementById('btnSendCode');
 
-const codeInput        = document.getElementById('codeInput');
-const newPassInput     = document.getElementById('newPassInput');
-const confirmPassInput = document.getElementById('confirmPassInput');
-const step2Msg         = document.getElementById('step2Msg');
-const btnChangePass    = document.getElementById('btnChangePass');
-const btnBack          = document.getElementById('btnBack');
-const btnResend        = document.getElementById('btnResend');
-const resendTimer      = document.getElementById('resendTimer');
+var codeInput        = document.getElementById('codeInput');
+var newPassInput     = document.getElementById('newPassInput');
+var confirmPassInput = document.getElementById('confirmPassInput');
+var step2Msg         = document.getElementById('step2Msg');
+var btnChangePass    = document.getElementById('btnChangePass');
+var btnBack          = document.getElementById('btnBack');
+var btnResend        = document.getElementById('btnResend');
+var resendTimer      = document.getElementById('resendTimer');
 
-const strengthFill     = document.getElementById('strengthFill');
-const strengthText     = document.getElementById('strengthText');
+var strengthFill     = document.getElementById('strengthFill');
+var strengthText     = document.getElementById('strengthText');
 
 // ── Utilidades ──
 
@@ -40,8 +39,8 @@ function limpiarMsg(el) {
 }
 
 function setLoading(btn, loading) {
-    const txt = btn.querySelector('.btn-text');
-    const spn = btn.querySelector('.btn-spinner');
+    var txt = btn.querySelector('.btn-text');
+    var spn = btn.querySelector('.btn-spinner');
     if (loading) {
         btn.disabled = true;
         if (txt) txt.style.visibility = 'hidden';
@@ -54,7 +53,7 @@ function setLoading(btn, loading) {
 }
 
 function validarEmailZimbra(email) {
-    const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    var regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!regex.test(email)) return { valid: false, error: 'Formato de correo inválido' };
     if (!email.endsWith('@mail.das.pdr')) return { valid: false, error: 'El correo debe ser Zimbra (@mail.das.pdr)' };
     if (!/^[a-zA-Z0-9._-]+$/.test(email.split('@')[0])) return { valid: false, error: 'Caracteres inválidos en el correo' };
@@ -63,7 +62,7 @@ function validarEmailZimbra(email) {
 
 function evaluarFortaleza(password) {
     if (!password) return { nivel: '', texto: '' };
-    let score = 0;
+    var score = 0;
     if (password.length >= 6) score++;
     if (password.length >= 8) score++;
     if (/[A-Z]/.test(password)) score++;
@@ -77,13 +76,13 @@ function evaluarFortaleza(password) {
 }
 
 function iniciarCountdown(segundos) {
-    let restante = segundos;
+    var restante = segundos;
     btnResend.disabled = true;
-    resendTimer.textContent = `(${restante}s)`;
+    resendTimer.textContent = '(' + restante + 's)'; // ✅ FIX template literal
 
     if (resendInterval) clearInterval(resendInterval);
 
-    resendInterval = setInterval(() => {
+    resendInterval = setInterval(function() { // ✅ FIX arrow function
         restante--;
         if (restante <= 0) {
             clearInterval(resendInterval);
@@ -91,7 +90,7 @@ function iniciarCountdown(segundos) {
             btnResend.disabled = false;
             resendTimer.textContent = '';
         } else {
-            resendTimer.textContent = `(${restante}s)`;
+            resendTimer.textContent = '(' + restante + 's)';
         }
     }, 1000);
 }
@@ -100,10 +99,13 @@ function iniciarCountdown(segundos) {
 
 function goToStep(num) {
     // Ocultar todos los paneles
-    document.querySelectorAll('.step-panel').forEach(p => p.classList.add('hidden'));
+    var panels = document.querySelectorAll('.step-panel');
+    for (var p = 0; p < panels.length; p++) { // ✅ FIX NodeList.forEach
+        panels[p].classList.add('hidden');
+    }
 
     // Mostrar panel correspondiente
-    const panel = document.getElementById('panel' + num);
+    var panel = document.getElementById('panel' + num);
     if (panel) {
         panel.classList.remove('hidden');
         // Forzar re-animación
@@ -113,39 +115,39 @@ function goToStep(num) {
     }
 
     // Actualizar indicadores
-    for (let i = 1; i <= 3; i++) {
-        const ind = document.getElementById('stepInd' + i);
+    for (var i = 1; i <= 3; i++) {
+        var ind = document.getElementById('stepInd' + i);
         ind.classList.remove('active', 'completed');
         if (i < num) ind.classList.add('completed');
         else if (i === num) ind.classList.add('active');
     }
 
-    // Actualizar líneas conectoras
-    const line1 = document.getElementById('line1');
-    const line2 = document.getElementById('line2');
-    line1.classList.toggle('active', num >= 2);
-    line2.classList.toggle('active', num >= 3);
+    // ✅ FIX classList.toggle con booleano no soportado en FF43
+    var line1 = document.getElementById('line1');
+    var line2 = document.getElementById('line2');
+    if (num >= 2) line1.classList.add('active'); else line1.classList.remove('active');
+    if (num >= 3) line2.classList.add('active'); else line2.classList.remove('active');
 
     // Cambiar ícono de step completado (checkmark)
-    for (let i = 1; i <= 3; i++) {
-        const ind = document.getElementById('stepInd' + i);
-        const numEl = ind.querySelector('.step-num');
-        if (i < num) {
+    for (var j = 1; j <= 3; j++) {
+        var ind2 = document.getElementById('stepInd' + j);
+        var numEl = ind2.querySelector('.step-num');
+        if (j < num) {
             numEl.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
         } else {
-            numEl.textContent = i;
+            numEl.textContent = j;
         }
     }
 }
 
 // ── Toggle password ──
-
-document.querySelectorAll('.toggle-pass').forEach(btn => {
-    btn.addEventListener('click', function () {
-        const targetId = this.getAttribute('data-target');
-        const input = document.getElementById(targetId);
-        const eyeOpen = this.querySelector('.ico-eye');
-        const eyeOff = this.querySelector('.ico-eye-off');
+var togglePassBtns = document.querySelectorAll('.toggle-pass');
+for (var t = 0; t < togglePassBtns.length; t++) { // ✅ FIX NodeList.forEach
+    togglePassBtns[t].addEventListener('click', function () {
+        var targetId = this.getAttribute('data-target');
+        var input = document.getElementById(targetId);
+        var eyeOpen = this.querySelector('.ico-eye');
+        var eyeOff = this.querySelector('.ico-eye-off');
 
         if (input.type === 'password') {
             input.type = 'text';
@@ -157,43 +159,34 @@ document.querySelectorAll('.toggle-pass').forEach(btn => {
             eyeOff.classList.add('hidden');
         }
     });
-});
+}
 
 // ── Fortaleza de contraseña en tiempo real ──
-
 newPassInput.addEventListener('input', function () {
-    const f = evaluarFortaleza(this.value);
+    var f = evaluarFortaleza(this.value);
     strengthFill.className = 'strength-fill ' + f.nivel;
     strengthText.className = 'strength-text ' + f.nivel;
     strengthText.textContent = f.texto;
 });
 
 // ── Solo números en el código ──
-
 codeInput.addEventListener('input', function () {
     this.value = this.value.replace(/[^0-9]/g, '').slice(0, 6);
 });
 
-// ── Enter en el input de email ──
-
-emailInput.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') enviarCodigo();
-});
-
-codeInput.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') cambiarPassword();
-});
+// ── Enter en los inputs ──
+emailInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') enviarCodigo(); });
+codeInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') cambiarPassword(); });
 
 // ── PASO 1: Enviar código al correo ──
 
-async function enviarCodigo() {
+function enviarCodigo() {
     limpiarMsg(emailMsg);
     emailInput.classList.remove('input-error', 'input-success');
 
-    const correo = emailInput.value.trim();
+    var correo = emailInput.value.trim();
+    var validacion = validarEmailZimbra(correo);
 
-    // Validación del formato de correo
-    const validacion = validarEmailZimbra(correo);
     if (!validacion.valid) {
         mostrarMsg(emailMsg, validacion.error, 'error');
         emailInput.classList.add('input-error');
@@ -203,57 +196,58 @@ async function enviarCodigo() {
 
     setLoading(btnSendCode, true);
 
-    try {
-        const resp = await fetch(API_BASE + '/api/recuperar-password', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ correo: correo })
-        });
+    // ✅ FIX async/await y .finally
+    function restaurarBtn1() { setLoading(btnSendCode, false); }
 
-        const data = await resp.json();
-
+    fetch(API_BASE + '/api/recuperar-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ correo: correo })
+    })
+    .then(function(resp) { return resp.json(); })
+    .then(function(data) {
         if (data.exitoso) {
             correoRecuperacion = correo;
             idUsuarioRecuperacion = data.idUsuario || null;
             mostrarMsg(emailMsg, 'Código enviado a tu correo', 'success');
             emailInput.classList.add('input-success');
 
-            // Avanzar al paso 2 después de un breve momento
-            setTimeout(() => {
+            setTimeout(function() {
                 goToStep(2);
                 limpiarMsg(emailMsg);
                 iniciarCountdown(60);
                 codeInput.focus();
             }, 800);
+            
+            restaurarBtn1();
         } else {
             mostrarMsg(emailMsg, data.error || 'No se pudo enviar el código', 'error');
             emailInput.classList.add('input-error');
+            restaurarBtn1();
         }
-    } catch (err) {
+    })
+    .catch(function(err) {
         mostrarMsg(emailMsg, 'Error de conexión. Intenta de nuevo.', 'error');
-    } finally {
-        setLoading(btnSendCode, false);
-    }
+        restaurarBtn1();
+    });
 }
 
 btnSendCode.addEventListener('click', enviarCodigo);
 
 // ── Reenviar código ──
 
-async function reenviarCodigo() {
+function reenviarCodigo() {
     if (!correoRecuperacion) return;
     btnResend.disabled = true;
     limpiarMsg(step2Msg);
 
-    try {
-        const resp = await fetch(API_BASE + '/api/recuperar-password', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ correo: correoRecuperacion })
-        });
-
-        const data = await resp.json();
-
+    fetch(API_BASE + '/api/recuperar-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ correo: correoRecuperacion })
+    })
+    .then(function(resp) { return resp.json(); })
+    .then(function(data) {
         if (data.exitoso) {
             idUsuarioRecuperacion = data.idUsuario || idUsuarioRecuperacion;
             mostrarMsg(step2Msg, 'Nuevo código enviado', 'success');
@@ -262,31 +256,27 @@ async function reenviarCodigo() {
             mostrarMsg(step2Msg, data.error || 'No se pudo reenviar', 'error');
             btnResend.disabled = false;
         }
-    } catch (err) {
+    })
+    .catch(function(err) {
         mostrarMsg(step2Msg, 'Error de conexión', 'error');
         btnResend.disabled = false;
-    }
+    });
 }
 
 btnResend.addEventListener('click', reenviarCodigo);
 
 // ── Botón atrás ──
-
-btnBack.addEventListener('click', function () {
-    goToStep(1);
-    limpiarMsg(step2Msg);
-});
+btnBack.addEventListener('click', function () { goToStep(1); limpiarMsg(step2Msg); });
 
 // ── PASO 2: Cambiar contraseña ──
 
-async function cambiarPassword() {
+function cambiarPassword() {
     limpiarMsg(step2Msg);
 
-    const codigo = codeInput.value.trim();
-    const nuevaPass = newPassInput.value;
-    const confirmPass = confirmPassInput.value;
+    var codigo = codeInput.value.trim();
+    var nuevaPass = newPassInput.value;
+    var confirmPass = confirmPassInput.value;
 
-    // Validaciones locales
     if (!codigo || codigo.length !== 6) {
         mostrarMsg(step2Msg, 'Ingresa el código de 6 dígitos', 'error');
         codeInput.classList.add('input-error');
@@ -318,32 +308,34 @@ async function cambiarPassword() {
 
     setLoading(btnChangePass, true);
 
-    try {
-        const resp = await fetch(API_BASE + '/api/restablecer-password', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                idUsuario: idUsuarioRecuperacion,
-                codigo: codigo,
-                nuevaContrasena: nuevaPass
-            })
-        });
+    // ✅ FIX async/await y .finally
+    function restaurarBtn2() { setLoading(btnChangePass, false); }
 
-        const data = await resp.json();
-
+    fetch(API_BASE + '/api/restablecer-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            idUsuario: idUsuarioRecuperacion,
+            codigo: codigo,
+            nuevaContrasena: nuevaPass
+        })
+    })
+    .then(function(resp) { return resp.json(); })
+    .then(function(data) {
         if (data.exitoso) {
             goToStep(3);
-            // Limpiar datos sensibles
             idUsuarioRecuperacion = null;
             correoRecuperacion = null;
+            restaurarBtn2();
         } else {
             mostrarMsg(step2Msg, data.error || 'No se pudo cambiar la contraseña', 'error');
+            restaurarBtn2();
         }
-    } catch (err) {
+    })
+    .catch(function(err) {
         mostrarMsg(step2Msg, 'Error de conexión. Intenta de nuevo.', 'error');
-    } finally {
-        setLoading(btnChangePass, false);
-    }
+        restaurarBtn2();
+    });
 }
 
 btnChangePass.addEventListener('click', cambiarPassword);

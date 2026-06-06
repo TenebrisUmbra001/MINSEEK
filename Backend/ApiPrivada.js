@@ -5,7 +5,10 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const mammoth = require('mammoth');
-const pdfParse = require('pdf-parse');
+
+// ❌ ELIMINADO: const pdfParse = require('pdf-parse');
+// ✅ NUEVO: Importar tu módulo custom que evita el bug y usa renderPage
+const { extraerTextoPDF } = require('./pdfHandler');
 
 const app = express();
 const PORT = process.env.PORT ? Number(process.env.PORT) : 6969;
@@ -393,7 +396,6 @@ app.post('/auth/generar-codigo', async (req, res) => {
     const resultado = moduloUser.generarCodigoValidacion(idUsuario);
     if (!resultado.exitoso) { return res.status(400).json(resultado); }
 
-    // ✅ CORREGIDO: usar la función importada directamente, no emailService.
     const emailResult = await enviarCodigoVerificacion(correoDestino, resultado.codigo);
     
     if (!emailResult.exitoso) {
@@ -455,7 +457,6 @@ app.post('/auth/logout', (req, res) => {
     if (!idConexion) { return res.status(400).json({ exitoso: false, error: 'idConexion es requerido', codigo: 'CAMPO_FALTANTE' }); }
     const resultado = moduloUser.cerrarSesion(idConexion);
     
-    // ✅ Al cerrar sesión manualmente, aseguramos que quede como desconectado
     if (idUsuario) {
       db.prepare('UPDATE Usuario SET EstaConectado = 0 WHERE id = ?').run(idUsuario);
     }
@@ -598,7 +599,6 @@ app.post('/auth/heartbeat', (req, res) => {
       return res.status(400).json({ exitoso: false, error: 'idUsuario requerido' });
     }
 
-    // Verificar que el usuario sigue conectado
     const usuario = db.prepare('SELECT id, EstaConectado FROM Usuario WHERE id = ?').get(idUsuario);
     if (!usuario) {
       return res.status(404).json({ exitoso: false, error: 'Usuario no encontrado', sesionActiva: false });
@@ -613,7 +613,6 @@ app.post('/auth/heartbeat', (req, res) => {
       });
     }
 
-    // Actualizar marca de actividad
     const actualizado = moduloUser.actualizarActividad(idUsuario);
     
     return res.status(200).json({ 
@@ -653,7 +652,14 @@ app.post('/api/private/upload', uploadDocs.array('archivos', 10), async function
         var contenidoExtraido = '';
         try {
           if (ext === '.docx') { contenidoExtraido = (await mammoth.extractRawText({ path: file.path })).value || ''; }
-          else if (ext === '.pdf') { contenidoExtraido = (await pdfParse(buffer)).text || ''; }
+          // ✅ FIX: Usar pdfHandler en lugar de pdf-parse directamente
+          else if (ext === '.pdf') {
+            const pdfResult = await extraerTextoPDF(buffer, file.originalname);
+            contenidoExtraido = pdfResult.text || '';
+            if (pdfResult.warning) {
+              log.warn(`⚠️ [DOC] PDF ${file.originalname}: ${pdfResult.warning}`);
+            }
+          }
           else if (['.txt', '.md', '.csv', '.json', '.xml', '.html', '.htm', '.rtf'].indexOf(ext) !== -1) { contenidoExtraido = fs.readFileSync(file.path, 'utf8'); }
           else if (ext === '.doc') { try { contenidoExtraido = fs.readFileSync(file.path, 'utf8').replace(/[^\x20-\x7E\n\ráéíóúüñÁÉÍÓÚÜÑ]/g, ' ').replace(/\s+/g, ' ').trim(); if (contenidoExtraido.length < 50) contenidoExtraido = '[Contenido .doc no legible automáticamente - convertí a .docx]'; } catch (e) { contenidoExtraido = '[Contenido .doc no legible automáticamente - convertí a .docx]'; } }
           else { contenidoExtraido = '[Contenido no legible automáticamente]'; }
@@ -778,7 +784,6 @@ app.post('/auth/recuperar-password', async (req, res) => {
 
     recoveryCodes.set(usuario.id, { codigo, expiry, intentos: 0 });
 
-    // ✅ CORREGIDO: usar la función importada directamente
     const emailResult = await enviarCodigoRecuperacion(usuario.Correo, codigo);
     if (!emailResult.exitoso) {
       log.error(`❌ [RECOVERY] Falló envío de correo a ${usuario.Correo}`);
@@ -858,12 +863,10 @@ app.post('/auth/restablecer-password', async (req, res) => {
 // INTERVALOS DE LIMPIEZA Y MANTENIMIENTO
 // ============================================================================
 
-// ✅ Desconectar usuarios inactivos cada 5 minutos (45 min de inactividad)
 setInterval(() => {
   moduloUser.desconectarUsuariosInactivos(45);
 }, 5 * 60 * 1000);
 
-// Ejecutar limpieza al arrancar
 setTimeout(() => {
   moduloUser.desconectarUsuariosInactivos(45);
 }, 10000);
