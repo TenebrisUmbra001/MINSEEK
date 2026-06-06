@@ -27,7 +27,7 @@ function InicioAdministrador() {
                 sessionStorage.setItem('usuario', result.usuario);
                 sessionStorage.setItem('esAdmin', 'true');
 
-                window.location.href = 'panel.html';
+                window.location.href = 'Adminpanel.html';
 
             } else {
                 alert('Acceso denegado. Este panel es exclusivo para Administradores.');
