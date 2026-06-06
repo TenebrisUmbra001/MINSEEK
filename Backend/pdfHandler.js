@@ -2,97 +2,115 @@
 const fs = require('fs');
 const log = require('./modelManager').log;
 
-// ✅ FIX: Importar pdf-parse evitando el bug del archivo de test
-let pdfParse;
+
+
+// ✅ MOTOR NUEVO: Usar pdfjs-dist v2.16 (Motor oficial de Firefox - Versión ligera)
+let pdfjsLib;
 try {
-  // Intentar importar la versión que no carga tests
-  pdfParse = require('pdf-parse/lib/pdf-parse.js');
-} catch (e) {
+  pdfjsLib = require('pdfjs-dist/build/pdf'); // ✅ Ruta para la versión 2.16
+} catch (e1) {
   try {
-    pdfParse = require('pdf-parse');
+    pdfjsLib = require('pdfjs-dist'); // Fallback genérico
   } catch (e2) {
-    log.error('❌ No se pudo cargar pdf-parse:', e2.message);
-    pdfParse = null;
+    log.error('❌ No se pudo cargar pdfjs-dist. Ejecutá: npm install pdfjs-dist@2.16.105');
   }
 }
 
 /**
- * Extraer texto de un PDF con diagnóstico completo
- * @param {Buffer} buffer - Buffer del archivo PDF
- * @param {string} filename - Nombre del archivo (para logs)
- * @returns {{ text: string, pages: number, method: string, warning: string|null }}
+ * Extraer texto de un PDF usando el motor de Firefox
  */
 async function extraerTextoPDF(buffer, filename) {
-  if (!pdfParse) {
-    return {
-      text: '',
-      pages: 0,
-      method: 'none',
-      warning: 'pdf-parse no está disponible. Instalá: npm install pdf-parse'
-    };
+  if (!pdfjsLib) {
+    return { text: '', pages: 0, method: 'none', warning: 'pdfjs-dist no está instalado.' };
   }
 
   if (!buffer || buffer.length === 0) {
     return { text: '', pages: 0, method: 'none', warning: 'Buffer vacío' };
   }
 
-  // Verificar que es un PDF real (magic bytes)
   const header = buffer.slice(0, 5).toString();
   if (header !== '%PDF-') {
-    log.warn(`⚠️ [PDF] ${filename} no tiene header %PDF- válido. Header: "${header}"`);
     return { text: '', pages: 0, method: 'none', warning: 'No es un archivo PDF válido' };
   }
 
   try {
-    // ✅ Opciones para manejar PDFs grandes y complejos
-    const options = {
-      maxPages: 500,           // Limitar páginas para no colgar
-      pagerender: renderPage,  // Función custom de renderizado
-    };
+    // Cargar el documento (pdfjs-dist soporta Buffer nativamente)
+    const doc = await pdfjsLib.getDocument({ data: buffer, useSystemFonts: true }).promise;
+    const numPages = doc.numPages;
+    let fullText = '';
 
-    const data = await pdfParse(buffer, options);
+    log.info(`📄 [PDF] ${filename}: Procesando ${numPages} páginas con motor Firefox...`);
 
-    let text = (data.text || '').trim();
-    const pages = data.numpages || 0;
+    // Iterar página por página
+    for (let i = 1; i <= numPages; i++) {
+      const page = await doc.getPage(i);
+      const textContent = await page.getTextContent();
+      
+      let pageText = '';
+      let lastY = null;
 
-    log.info(`📄 [PDF] ${filename}: ${pages} páginas, ${text.length} chars extraídos`);
+      if (textContent && textContent.items) {
+        for (let j = 0; j < textContent.items.length; j++) {
+          const item = textContent.items[j];
+          
+          if (!item || item.str === undefined || item.str === null) continue;
 
-    // ✅ DIAGNÓSTICO: Detectar PDF escaneado (imagen sin texto)
-    if (text.length === 0 && pages > 0) {
-      log.warn(`⚠️ [PDF] ${filename}: ${pages} páginas pero 0 texto → PDF ESCANEADO (imagen)`);
+          // Reconstruir saltos de línea basados en la posición Y
+          if (lastY !== null && item.transform && item.transform[5] !== undefined) {
+            const currentY = item.transform[5];
+            
+            if (Math.abs(currentY - lastY) > 2) {
+              // Cambió de renglón
+              pageText += '\n';
+            } else {
+              // ✅ MEJORA: Mismo renglón. Asegurar espacio entre palabras 
+              // pero evitar doble espacio si ya viene en el item
+              var lastChar = pageText.length > 0 ? pageText[pageText.length - 1] : '';
+              var firstChar = item.str.length > 0 ? item.str[0] : '';
+              if (lastChar !== ' ' && lastChar !== '\n' && firstChar !== ' ') {
+                pageText += ' ';
+              }
+            }
+          }
+
+          pageText += item.str;
+
+          if (item.transform && item.transform[5] !== undefined) {
+            lastY = item.transform[5];
+          }
+        }
+      }
+      
+      fullText += pageText + '\n\n';
+    }
+
+    fullText = fullText.trim();
+
+    log.info(`📄 [PDF] ${filename}: ${numPages} páginas, ${fullText.length} chars extraídos`);
+
+    if (fullText.length === 0 && numPages > 0) {
+      log.warn(`⚠️ [PDF] ${filename}: ${numPages} páginas pero 0 texto → PDF ESCANEADO o protegido`);
       return {
         text: '',
-        pages,
-        method: 'pdf-parse',
-        warning: `PDF escaneado (${pages} páginas sin capa de texto). Necesitás OCR para extraer el contenido. Convertí el PDF a texto antes de subirlo, o usá un PDF con capa de texto seleccionable.`
+        pages: numPages,
+        method: 'pdfjs-dist',
+        warning: `PDF escaneado o protegido (${numPages} páginas sin texto accesible).`
       };
     }
 
-    // ✅ DIAGNÓSTICO: Detectar texto sospechosamente corto
-    if (text.length > 0 && text.length < pages * 10) {
-      log.warn(`⚠️ [PDF] ${filename}: Texto muy corto (${text.length} chars para ${pages} páginas) → Posible PDF parcialmente escaneado`);
-      return {
-        text,
-        pages,
-        method: 'pdf-parse',
-        warning: `PDF con poco texto extraíble (${text.length} chars en ${pages} páginas). Puede que parte del contenido sea imagen.`
-      };
-    }
-
-    // Limpiar texto extraído
-    text = limpiarTextoPDF(text);
+    fullText = limpiarTextoPDF(fullText);
 
     return {
-      text,
-      pages,
-      method: 'pdf-parse',
-      warning: text.length > 0 ? null : 'No se pudo extraer texto del PDF'
+      text: fullText,
+      pages: numPages,
+      method: 'pdfjs-dist',
+      warning: fullText.length > 0 ? null : 'No se pudo extraer texto'
     };
 
   } catch (err) {
-    log.error(`❌ [PDF] Error parseando ${filename}:`, err.message);
+    log.error(`❌ [PDF] Error parseando ${filename} con motor Firefox:`, err.message);
 
-    // ✅ FALLBACK: Intentar extracción bruta si pdf-parse falla
+    // Fallback: Extracción bruta
     try {
       const rawText = extraerTextoBrutoPDF(buffer);
       if (rawText.length > 50) {
@@ -101,7 +119,7 @@ async function extraerTextoPDF(buffer, filename) {
           text: limpiarTextoPDF(rawText),
           pages: -1,
           method: 'raw-extraction',
-          warning: 'PDF parseado con método alternativo. Puede contener errores.'
+          warning: 'PDF parseado con método alternativo.'
         };
       }
     } catch (rawErr) {
@@ -118,60 +136,16 @@ async function extraerTextoPDF(buffer, filename) {
 }
 
 /**
- * Función custom de renderizado de página para pdf-parse
- * Captura más texto que el render por defecto
- */
-function renderPage(pageData) {
-  const renderOptions = {
-    normalizeWhitespace: true,
-    disableCombineTextItems: false
-  };
-
-  return pageData.getTextContent(renderOptions)
-    .then(function(textContent) {
-      let text = '';
-      let lastY = null;
-
-      if (textContent && textContent.items) {
-        for (const item of textContent.items) {
-          if (item.str === undefined) continue;
-
-          // Detectar salto de línea por cambio de posición Y
-          if (lastY !== null && item.transform && item.transform[5] !== undefined) {
-            const currentY = item.transform[5];
-            if (Math.abs(currentY - lastY) > 2) {
-              text += '\n';
-            }
-          }
-
-          text += item.str;
-
-          if (item.transform && item.transform[5] !== undefined) {
-            lastY = item.transform[5];
-          }
-        }
-      }
-
-      return text;
-    })
-    .catch(() => '');
-}
-
-/**
- * Extracción bruta de texto cuando pdf-parse falla
- * Busca streams de texto entre BT...ET en el PDF
+ * Extracción bruta de texto cuando todo lo demás falla
  */
 function extraerTextoBrutoPDF(buffer) {
   const text = buffer.toString('latin1');
-
-  // Buscar streams de texto
   const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
   let combined = '';
   let match;
 
   while ((match = streamRegex.exec(text)) !== null) {
     const streamContent = match[1];
-    // Buscar texto entre paréntesis en operadores Tj, TJ, ', "
     const textParts = streamContent.match(/\(([^\\)]*(?:\\.[^\\)]*)*)\)\s*Tj/g);
     if (textParts) {
       for (const part of textParts) {
@@ -182,7 +156,6 @@ function extraerTextoBrutoPDF(buffer) {
       }
     }
 
-    // Buscar arrays de texto TJ
     const tjParts = streamContent.match(/\[([^\]]*\([^\]]*\)[^\]]*)\]\s*TJ/g);
     if (tjParts) {
       for (const part of tjParts) {
@@ -198,7 +171,6 @@ function extraerTextoBrutoPDF(buffer) {
     }
   }
 
-  // Filtrar caracteres no legibles
   combined = combined.replace(/[^\x20-\x7E\n\ráéíóúüñÁÉÍÓÚÜÑ¿¡]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -211,15 +183,10 @@ function extraerTextoBrutoPDF(buffer) {
  */
 function limpiarTextoPDF(text) {
   if (!text) return '';
-
   return text
-    // Eliminar caracteres nulos y de control
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
-    // Normalizar espacios múltiples
-    .replace(/ {3,}/g, '  ')
-    // Normalizar saltos de línea múltiples
-    .replace(/\n{4,}/g, '\n\n')
-    // Eliminar espacios al inicio de línea
+    .replace(/ {3,}/g, '  ') // Reducir espacios múltiples a 2 máximo
+    .replace(/\n{4,}/g, '\n\n') // Reducir saltos múltiples a 2
     .replace(/^ +/gm, '')
     .trim();
 }
