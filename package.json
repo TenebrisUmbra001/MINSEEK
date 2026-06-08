@@ -2,6 +2,7 @@
   "dependencies": {
     "bcrypt": "^5.1.1",
     "better-sqlite3": "^12.10.0",
+    "canvas": "^3.2.3",
     "express": "^5.2.1",
     "express-rate-limit": "^7.1.5",
     "express-session": "^1.19.0",
@@ -12,6 +13,7 @@
     "node-fetch": "^3.3.2",
     "nodemailer": "^8.0.9",
     "pdf-parse": "^2.4.5",
-    "pdfjs-dist": "^2.16.105"
+    "pdfjs-dist": "^2.16.105",
+    "tesseract.js": "^7.0.0"
   }
 }
