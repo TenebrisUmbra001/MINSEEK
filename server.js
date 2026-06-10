@@ -270,8 +270,6 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
   }
 });
 
-app.get('/api/conversations', function (req, res) { return res.status(200).json({ conversations: [] }); });
-app.get('/api/conversations/:id', function (req, res) { return res.status(404).json({ error: 'No encontrada' }); });
 
 // ============================================================================
 // RUTAS - SUBIDA MÚLTIPLE
@@ -370,6 +368,49 @@ app.post('/api/restablecer-password', authLimiter, async (req, res) => {
 app.get('/recuperar-password', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'RecuperarPassword', 'index.html'));
 });
+
+// ============================================================================
+// PROXY - CONVERSACIONES
+// ============================================================================
+
+app.post('/api/conversaciones/crear', function (req, res) {
+  forwardToPrivate('/auth/conversaciones/crear', req.body)
+    .then(function (result) { return res.status(result.status).json(result.body); })
+    .catch(function () { return res.status(502).json({ exitoso: false, error: 'Error servidor' }); });
+});
+
+app.post('/api/conversaciones/:id/guardar', function (req, res) {
+  forwardToPrivate('/auth/conversaciones/' + req.params.id + '/guardar', req.body)
+    .then(function (result) { return res.status(result.status).json(result.body); })
+    .catch(function () { return res.status(502).json({ exitoso: false, error: 'Error servidor' }); });
+});
+
+app.get('/api/conversaciones/:idUsuario', function (req, res) {
+  forwardGetToPrivate('/auth/conversaciones/' + req.params.idUsuario)
+    .then(function (result) { return res.status(result.status).json(result.body); })
+    .catch(function () { return res.status(502).json({ exitoso: false, error: 'Error servidor' }); });
+});
+
+app.get('/api/conversacion/:id', function (req, res) {
+  var idUsuario = req.query.idUsuario;
+  if (!idUsuario) return res.status(400).json({ exitoso: false, error: 'idUsuario requerido' });
+  forwardGetToPrivate('/auth/conversacion/' + req.params.id + '?idUsuario=' + encodeURIComponent(idUsuario))
+    .then(function (result) { return res.status(result.status).json(result.body); })
+    .catch(function () { return res.status(502).json({ exitoso: false, error: 'Error servidor' }); });
+});
+
+app.post('/api/conversacion/:id/titulo', function (req, res) {
+  forwardToPrivate('/auth/conversacion/' + req.params.id + '/titulo', req.body)
+    .then(function (result) { return res.status(result.status).json(result.body); })
+    .catch(function () { return res.status(502).json({ exitoso: false, error: 'Error servidor' }); });
+});
+
+app.post('/api/conversacion/:id/eliminar', function (req, res) {
+  forwardToPrivate('/auth/conversacion/' + req.params.id + '/eliminar', req.body)
+    .then(function (result) { return res.status(result.status).json(result.body); })
+    .catch(function () { return res.status(502).json({ exitoso: false, error: 'Error servidor' }); });
+});
+
 
 // ============================================================================
 // ERROR HANDLER — Conservar CORS en errores

@@ -872,6 +872,98 @@ setTimeout(() => {
 }, 10000);
 
 // ============================================================================
+// RUTAS DE CONVERSACIONES (Cifrado AES-256-GCM)
+// ============================================================================
+var moduloConversacion = require('./moduloConversacion');
+
+app.post('/auth/conversaciones/crear', function (req, res) {
+  try {
+    var idUsuario = req.body.idUsuario;
+    var titulo = req.body.titulo;
+    if (!idUsuario) return res.status(400).json({ exitoso: false, error: 'idUsuario requerido' });
+    var resultado = moduloConversacion.crearConversacion(idUsuario, titulo);
+    if (!resultado.exitoso) return res.status(400).json(resultado);
+    return res.status(201).json(resultado);
+  } catch (error) {
+    log.error('❌ Error en /auth/conversaciones/crear:', error.message);
+    return res.status(500).json({ exitoso: false, error: 'Error del servidor' });
+  }
+});
+
+app.post('/auth/conversaciones/:id/guardar', function (req, res) {
+  try {
+    var id = req.params.id;
+    var idUsuario = req.body.idUsuario;
+    var mensajes = req.body.mensajes;
+    if (!id || !idUsuario) return res.status(400).json({ exitoso: false, error: 'id e idUsuario requeridos' });
+    if (!Array.isArray(mensajes)) return res.status(400).json({ exitoso: false, error: 'mensajes debe ser un array' });
+    var resultado = moduloConversacion.guardarConversacion(id, idUsuario, mensajes);
+    if (!resultado.exitoso) return res.status(400).json(resultado);
+    return res.status(200).json(resultado);
+  } catch (error) {
+    log.error('❌ Error en /auth/conversaciones/:id/guardar:', error.message);
+    return res.status(500).json({ exitoso: false, error: 'Error del servidor' });
+  }
+});
+
+app.get('/auth/conversaciones/:idUsuario', function (req, res) {
+  try {
+    var resultado = moduloConversacion.obtenerConversaciones(req.params.idUsuario);
+    if (!resultado.exitoso) return res.status(400).json(resultado);
+    return res.status(200).json(resultado);
+  } catch (error) {
+    log.error('❌ Error en /auth/conversaciones/:idUsuario:', error.message);
+    return res.status(500).json({ exitoso: false, error: 'Error del servidor' });
+  }
+});
+
+app.get('/auth/conversacion/:id', function (req, res) {
+  try {
+    var id = req.params.id;
+    var idUsuario = req.query.idUsuario;
+    if (!id || !idUsuario) return res.status(400).json({ exitoso: false, error: 'id e idUsuario requeridos' });
+    var resultado = moduloConversacion.obtenerConversacion(id, idUsuario);
+    if (!resultado.exitoso) return res.status(404).json(resultado);
+    return res.status(200).json(resultado);
+  } catch (error) {
+    log.error('❌ Error en /auth/conversacion/:id:', error.message);
+    return res.status(500).json({ exitoso: false, error: 'Error del servidor' });
+  }
+});
+
+app.post('/auth/conversacion/:id/titulo', function (req, res) {
+  try {
+    var id = req.params.id;
+    var idUsuario = req.body.idUsuario;
+    var titulo = req.body.titulo;
+    if (!id || !idUsuario || !titulo) return res.status(400).json({ exitoso: false, error: 'Parámetros requeridos' });
+    var resultado = moduloConversacion.actualizarTitulo(id, idUsuario, titulo);
+    if (!resultado.exitoso) return res.status(400).json(resultado);
+    return res.status(200).json(resultado);
+  } catch (error) {
+    log.error('❌ Error en /auth/conversacion/:id/titulo:', error.message);
+    return res.status(500).json({ exitoso: false, error: 'Error del servidor' });
+  }
+});
+
+app.post('/auth/conversacion/:id/eliminar', function (req, res) {
+  try {
+    var id = req.params.id;
+    var idUsuario = req.body.idUsuario;
+    if (!id || !idUsuario) return res.status(400).json({ exitoso: false, error: 'id e idUsuario requeridos' });
+    var resultado = moduloConversacion.eliminarConversacion(id, idUsuario);
+    if (!resultado.exitoso) return res.status(400).json(resultado);
+    return res.status(200).json(resultado);
+  } catch (error) {
+    log.error('❌ Error en /auth/conversacion/:id/eliminar:', error.message);
+    return res.status(500).json({ exitoso: false, error: 'Error del servidor' });
+  }
+});
+
+
+
+
+// ============================================================================
 // ERROR HANDLER — Debe conservar headers CORS en respuestas de error
 // ============================================================================
 app.use((err, req, res, next) => {

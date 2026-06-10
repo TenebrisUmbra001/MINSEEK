@@ -20,14 +20,16 @@
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <div class="sidebar-logo">
-        <div class="sidebar-logo-icon" onclick="window.location.href='ChatMinSeek.html'">
+        <!-- ✅ CAMBIO 1: Añadido id="sidebarLogoIcon", eliminado onclick -->
+        <div class="sidebar-logo-icon" id="sidebarLogoIcon">
           <img src="../Assets/LOGO IA CCR.png" alt="">
         </div>
         <div class="sidebar-logo-text">
           <strong>IACCR</strong>
         </div>
       </div>
-      <button onclick="window.location.replace('ChatMinSeek.html')" class="btn-new-chat" id="btnNewChat">
+      <!-- ✅ CAMBIO 2: Eliminado onclick, el JS lo maneja -->
+      <button class="btn-new-chat" id="btnNewChat">
         <svg viewBox="0 0 24 24">
           <line x1="12" y1="5" x2="12" y2="19" />
           <line x1="5" y1="12" x2="19" y2="12" />
@@ -58,7 +60,7 @@
             </svg>
             Ajustes
           </button>
-          
+
           <!-- ✅ BOTÓN PANEL ADMIN AÑADIDO AQUÍ -->
           <button class="dropdown-item" id="btnAdminPanel">
             <svg viewBox="0 0 24 24">
@@ -170,7 +172,7 @@
             <label for="modalNombreVisible">Nombre visible</label>
             <div class="nombre-visible-wrapper">
               <input type="text" id="modalNombreVisible" placeholder="Nombre que verán los demás" maxlength="50">
-              <button type="button" class="btn-reset-nombre" id="btnResetNombre" title="Restablecer al nombre de usuario">
+              <button type="button" class="btn-reset-nomebre" id="btnResetNombre" title="Restablecer al nombre de usuario">
                 <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
               </button>
             </div>

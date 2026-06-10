@@ -18,7 +18,7 @@ var idUsuarioActual = null;
 function iniciarHeartbeat(idUsuario) {
   detenerHeartbeat();
   idUsuarioActual = idUsuario;
-  
+
   heartbeatInterval = setInterval(function() {
     fetch('/api/heartbeat', {
       method: 'POST',
@@ -41,7 +41,7 @@ function iniciarHeartbeat(idUsuario) {
       console.warn('⚠️ Heartbeat error de red:', e.message);
     });
   }, 5 * 60 * 1000);
-  
+
   fetch('/api/heartbeat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -78,14 +78,15 @@ var fileInput = document.getElementById('fileInput');
 var attachBtn = document.getElementById('attachBtn');
 var filePreviewList = document.getElementById('filePreviewList');
 
-var selectedFiles = []; 
+var selectedFiles = [];
 var MAX_FILE_SIZE = 50 * 1024 * 1024;
 var MAX_FILES = 10;
 var messages = [];
 var isStreaming = false;
 var sidebarOpen = true;
 var currentConvId = null;
-var currentDocContexts = []; 
+var currentDocContexts = [];
+var convSaveTimer = null;
 
 function isMobile() { return window.innerWidth <= 768; }
 var iconOpen = '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/>';
@@ -100,13 +101,10 @@ btnToggle.addEventListener('click', toggleSidebar);
 sidebarOverlay.addEventListener('click', closeSidebar);
 function esc(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
 
-function loadHistory() { sidebarScroll.innerHTML = ''; }
-
 function extractThink(text) { var m = text.match(/思索([\s\S]*?)<\/think>/i); return m ? m[1].trim() : ''; }
 function removeThink(text) { return text.replace(/思索[\s\S]*?<\/think>/gi, '').trim(); }
 function makeWelcome() { var d = document.createElement('div'); d.className = 'welcome-state'; d.id = 'welcomeState'; d.innerHTML = '<div class="welcome-icon"><img draggable="false" src="../Assets/LOGO IA CCR.png" alt=""></div><h2>Inicia una conversacion</h2><p>Escribe tu consulta abajo.</p>'; return d; }
 
-// ✅ FIX para Firefox 43: padStart no existe. Usamos función manual.
 function pad2(n) { return n < 10 ? '0' + n : '' + n; }
 function timeStr() { var n = new Date(); return pad2(n.getHours()) + ':' + pad2(n.getMinutes()); }
 
@@ -116,7 +114,7 @@ var docSvg = '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0
 
 function uploadDocuments(files) {
   return new Promise(function (resolve, reject) {
-    var formData = new FormData(); 
+    var formData = new FormData();
     for (var i = 0; i < files.length; i++) { formData.append('archivos', files[i]); }
     fetch('/api/upload', { method: 'POST', body: formData })
     .then(function (response) { return response.text().then(function (text) { var p; try { p = JSON.parse(text); } catch (e) { p = { ok: false, error: text }; } return { status: response.status, body: p }; }); })
@@ -174,7 +172,6 @@ function getUserId() {
   return sessionStorage.getItem('idUsuario') || currentUserId;
 }
 
-// ── Cargar datos ──
 function loadUserInfo() {
   var nameEl = document.getElementById('userName');
   var avatarEl = document.getElementById('userAvatar');
@@ -310,7 +307,7 @@ if (modalConfirmPassword) {
 }
 
 var togglePassBtns = document.querySelectorAll('.btn-toggle-password');
-for (var t=0; t<togglePassBtns.length; t++) {
+for (var t = 0; t < togglePassBtns.length; t++) {
   togglePassBtns[t].addEventListener('click', function () {
     var targetId = this.getAttribute('data-target'); if (!targetId) return;
     var input = document.getElementById(targetId); if (!input) return;
@@ -319,7 +316,6 @@ for (var t=0; t<togglePassBtns.length; t++) {
   });
 }
 
-// ── Guardar Ajustes ──
 settingsForm.addEventListener('submit', function (e) {
   e.preventDefault();
   var userId = getUserId();
@@ -378,7 +374,6 @@ settingsForm.addEventListener('submit', function (e) {
   .finally(function() { saveBtn.disabled = false; saveBtn.textContent = originalText; });
 });
 
-// ── Desconectarse ──
 function logout() {
   detenerHeartbeat(); optionsDropdown.classList.remove('open');
   var overlay = document.createElement('div'); overlay.className = 'logout-overlay';
@@ -409,7 +404,272 @@ if (btnLogout) btnLogout.addEventListener('click', logout);
 loadUserInfo();
 
 /* ═══════════════════════════════════════
-   CHAT: Envío y Streaming
+   SISTEMA DE CONVERSACIONES
+   ═══════════════════════════════════════ */
+
+// ── Cargar historial en sidebar ──
+function loadHistory() {
+  var userId = getUserId();
+  if (!userId) { sidebarScroll.innerHTML = ''; return; }
+
+  fetch('/api/conversaciones/' + userId)
+  .then(function(response) { return response.json(); })
+  .then(function(result) {
+    if (!result.exitoso || !result.conversaciones) {
+      sidebarScroll.innerHTML = '<div class="conv-empty">No hay conversaciones</div>';
+      return;
+    }
+    renderConversaciones(result.conversaciones);
+  })
+  .catch(function(err) {
+    console.warn('Error cargando historial:', err);
+    sidebarScroll.innerHTML = '<div class="conv-empty">Error al cargar</div>';
+  });
+}
+
+// ── Agrupar y renderizar conversaciones ──
+function renderConversaciones(convs) {
+  sidebarScroll.innerHTML = '';
+  if (!convs || convs.length === 0) {
+    sidebarScroll.innerHTML = '<div class="conv-empty">No hay conversaciones</div>';
+    return;
+  }
+
+  var hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  var ayer = new Date(hoy.getTime()); ayer.setDate(ayer.getDate() - 1);
+  var semana = new Date(hoy.getTime()); semana.setDate(semana.getDate() - 7);
+  var mes = new Date(hoy.getTime()); mes.setDate(mes.getDate() - 30);
+
+  var grupos = { 'Hoy': [], 'Ayer': [], 'Ultimos 7 dias': [], 'Ultimos 30 dias': [] };
+
+  for (var i = 0; i < convs.length; i++) {
+    var c = convs[i];
+    var fecha = new Date(c.fechaActualizacion || c.fechaCreacion);
+    fecha.setHours(0, 0, 0, 0);
+
+    if (fecha.getTime() === hoy.getTime()) grupos['Hoy'].push(c);
+    else if (fecha.getTime() === ayer.getTime()) grupos['Ayer'].push(c);
+    else if (fecha > semana) grupos['Ultimos 7 dias'].push(c);
+    else if (fecha > mes) grupos['Ultimos 30 dias'].push(c);
+  }
+
+  var keys = ['Hoy', 'Ayer', 'Ultimos 7 dias', 'Ultimos 30 dias'];
+  for (var g = 0; g < keys.length; g++) {
+    var grupo = grupos[keys[g]];
+    if (grupo.length === 0) continue;
+
+    var label = document.createElement('div');
+    label.className = 'conv-group-label';
+    label.textContent = keys[g];
+    sidebarScroll.appendChild(label);
+
+    for (var j = 0; j < grupo.length; j++) {
+      sidebarScroll.appendChild(crearConvItem(grupo[j]));
+    }
+  }
+}
+
+function crearConvItem(conv) {
+  var item = document.createElement('div');
+  item.className = 'conv-item' + (conv.id === currentConvId ? ' active' : '');
+  item.setAttribute('data-id', conv.id);
+
+  var title = document.createElement('span');
+  title.className = 'conv-title';
+  title.textContent = conv.titulo || 'Sin titulo';
+  title.title = conv.titulo || 'Sin titulo';
+
+  var deleteBtn = document.createElement('button');
+  deleteBtn.className = 'conv-delete';
+  deleteBtn.innerHTML = '<svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  deleteBtn.title = 'Eliminar conversacion';
+
+  item.addEventListener('click', function(e) {
+    if (e.target.closest('.conv-delete')) return;
+    cargarConversacion(conv.id);
+  });
+
+  deleteBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    eliminarConversacion(conv.id, conv.titulo);
+  });
+
+  item.appendChild(title);
+  item.appendChild(deleteBtn);
+  return item;
+}
+
+// ── Cargar una conversacion pasada ──
+function cargarConversacion(id) {
+  var userId = getUserId();
+  if (!userId || !id) return;
+
+  fetch('/api/conversacion/' + id + '?idUsuario=' + encodeURIComponent(userId))
+  .then(function(response) { return response.json(); })
+  .then(function(result) {
+    if (!result.exitoso || !result.conversacion) {
+      console.warn('Error cargando conversacion:', result.error);
+      return;
+    }
+
+    var conv = result.conversacion;
+    currentConvId = conv.id;
+
+    chatContainer.innerHTML = '';
+    messages = [];
+
+    for (var i = 0; i < conv.mensajes.length; i++) {
+      var msg = conv.mensajes[i];
+      messages.push({ role: msg.role, content: msg.content });
+
+      if (msg.role === 'user') {
+        var displayText = msg.displayText || msg.content;
+        var userDiv = document.createElement('div');
+        userDiv.className = 'message user';
+        userDiv.innerHTML = esc(displayText) + '<div class="msg-time">' + (msg.timestamp || '') + '</div>';
+        chatContainer.appendChild(userDiv);
+      } else if (msg.role === 'assistant') {
+        var asstDiv = document.createElement('div');
+        asstDiv.className = 'message assistant';
+        renderThinking(asstDiv, msg.content);
+        chatContainer.appendChild(asstDiv);
+      }
+    }
+
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+
+    var items = sidebarScroll.querySelectorAll('.conv-item');
+    for (var j = 0; j < items.length; j++) {
+      items[j].classList.toggle('active', items[j].getAttribute('data-id') === id);
+    }
+
+    if (isMobile()) closeSidebar();
+  })
+  .catch(function(err) {
+    console.warn('Error cargando conversacion:', err);
+  });
+}
+
+// ── Eliminar una conversacion ──
+function eliminarConversacion(id, titulo) {
+  var userId = getUserId();
+  if (!userId || !id) return;
+
+  var nombre = (titulo || 'Sin titulo');
+  if (nombre.length > 30) nombre = nombre.substring(0, 27) + '...';
+
+  if (!window.confirm('Eliminar "' + nombre + '"?')) return;
+
+  fetch('/api/conversacion/' + id + '/eliminar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idUsuario: userId })
+  })
+  .then(function(response) { return response.json(); })
+  .then(function(result) {
+    if (result.exitoso) {
+      if (currentConvId === id) {
+        currentConvId = null;
+        messages = [];
+        chatContainer.innerHTML = '';
+        chatContainer.appendChild(makeWelcome());
+      }
+      loadHistory();
+    } else {
+      alert('Error: ' + (result.error || 'No se pudo eliminar'));
+    }
+  })
+  .catch(function(err) {
+    console.warn('Error eliminando conversacion:', err);
+  });
+}
+
+// ── Guardar conversacion actual ──
+function saveConversation() {
+  var userId = getUserId();
+  if (!userId || messages.length === 0) return;
+
+  var mensajesParaGuardar = [];
+  for (var i = 0; i < messages.length; i++) {
+    var msg = {
+      role: messages[i].role,
+      content: messages[i].content
+    };
+    if (messages[i].displayText) msg.displayText = messages[i].displayText;
+    if (messages[i].timestamp) msg.timestamp = messages[i].timestamp;
+    mensajesParaGuardar.push(msg);
+  }
+
+  if (!currentConvId) {
+    fetch('/api/conversaciones/crear', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idUsuario: userId })
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(result) {
+      if (result.exitoso && result.id) {
+        currentConvId = result.id;
+        guardarMensajesEnServidor(currentConvId, userId, mensajesParaGuardar);
+      } else {
+        console.warn('Error creando conversacion:', result.error);
+      }
+    })
+    .catch(function(err) {
+      console.warn('Error creando conversacion:', err);
+    });
+  } else {
+    guardarMensajesEnServidor(currentConvId, userId, mensajesParaGuardar);
+  }
+}
+
+function guardarMensajesEnServidor(convId, userId, mensajes) {
+  fetch('/api/conversaciones/' + convId + '/guardar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idUsuario: userId, mensajes: mensajes })
+  })
+  .then(function(response) { return response.json(); })
+  .then(function(result) {
+    if (result.exitoso) {
+      if (result.titulo) {
+        loadHistory();
+      }
+    } else {
+      console.warn('Error guardando conversacion:', result.error);
+    }
+  })
+  .catch(function(err) {
+    console.warn('Error guardando conversacion:', err);
+  });
+}
+
+// ── Auto-guardar con debounce ──
+function scheduleSave() {
+  if (convSaveTimer) clearTimeout(convSaveTimer);
+  convSaveTimer = setTimeout(function() {
+    saveConversation();
+  }, 2000);
+}
+
+// ── Nueva conversacion ──
+function nuevaConversacion() {
+  currentConvId = null;
+  messages = [];
+  chatContainer.innerHTML = '';
+  chatContainer.appendChild(makeWelcome());
+  userInput.value = '';
+  clearSelectedFiles();
+  userInput.focus();
+
+  var items = sidebarScroll.querySelectorAll('.conv-item');
+  for (var i = 0; i < items.length; i++) {
+    items[i].classList.remove('active');
+  }
+}
+
+/* ═══════════════════════════════════════
+   CHAT: Envio y Streaming
    ═══════════════════════════════════════ */
 function sendMessage() {
   var text = userInput.value.trim();
@@ -428,7 +688,7 @@ function sendMessage() {
 
     uploadDocuments(filesToSend).then(function(result) {
       var successHtml = '';
-      if (result.archivos) { for (var a = 0; a < result.archivos.length; a++) { successHtml += '<div class="doc-info" style="margin-bottom:4px"><div class="doc-name">' + esc(result.archivos[a].nombre) + '</div><div class="doc-status success">✓ Leído</div></div>'; if (result.archivos[a].contenido) currentDocContexts.push(result.archivos[a].contenido); } }
+      if (result.archivos) { for (var a = 0; a < result.archivos.length; a++) { successHtml += '<div class="doc-info" style="margin-bottom:4px"><div class="doc-name">' + esc(result.archivos[a].nombre) + '</div><div class="doc-status success">✓ Leido</div></div>'; if (result.archivos[a].contenido) currentDocContexts.push(result.archivos[a].contenido); } }
       uploadDiv.innerHTML = '<div class="doc-icon-wrap">' + docSvg + '</div><div style="flex:1;min-width:0">' + successHtml + '</div><div class="msg-time">' + timeStr() + '</div>';
       if (!text) { userInput.focus(); return; }
       continueSendMessage(text);
@@ -442,44 +702,47 @@ function sendMessage() {
 }
 
 function continueSendMessage(text) {
+  var now = timeStr();
   var userDiv = document.createElement('div'); userDiv.className = 'message user';
-  userDiv.innerHTML = esc(text) + '<div class="msg-time">' + timeStr() + '</div>';
+  userDiv.innerHTML = esc(text) + '<div class="msg-time">' + now + '</div>';
   chatContainer.appendChild(userDiv); chatContainer.scrollTop = chatContainer.scrollHeight;
 
   var promptForAPI = text;
   if (currentDocContexts.length > 0) {
-    promptForAPI = "[El usuario ha adjuntado " + currentDocContexts.length + " documento(s). A continuación se muestra el contenido extraído:\n---\n" + currentDocContexts.join('\n\n---\n\n') + "\n---\n]\n\nPregunta del usuario: " + text;
+    promptForAPI = "[El usuario ha adjuntado " + currentDocContexts.length + " documento(s). A continuacion se muestra el contenido extraido:\n---\n" + currentDocContexts.join('\n\n---\n\n') + "\n---\n]\n\nPregunta del usuario: " + text;
     currentDocContexts = [];
   }
 
-  messages.push({ role: 'user', content: promptForAPI }); userInput.value = ''; sendBtn.disabled = true; isStreaming = true;
+  // Guardar con displayText para separar texto visible del contexto de docs
+  messages.push({ role: 'user', content: promptForAPI, displayText: text, timestamp: now });
+  userInput.value = ''; sendBtn.disabled = true; isStreaming = true;
   var asstDiv = document.createElement('div'); asstDiv.className = 'message assistant'; asstDiv.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
   chatContainer.appendChild(asstDiv); chatContainer.scrollTop = chatContainer.scrollHeight; var fullContent = '';
 
   var body = { messages: messages }; if (currentConvId) body.conversation_id = currentConvId;
-  
+
   fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   .then(function(response) {
     if (!response.ok) throw new Error('Error servidor');
-    
-    // ✅ FIREFOX 43 FALLBACK: Si el navegador no soporta ReadableStream
+
+    // FIREFOX 43 FALLBACK: Si el navegador no soporta ReadableStream
     if (!response.body || !response.body.getReader) {
       return response.text().then(function(text) {
         var lines = text.split('\n');
         for (var i = 0; i < lines.length; i++) {
           var line = lines[i];
-          if (line.startsWith('data: ')) {
+          if (line.indexOf('data: ') === 0) {
             var payload = line.substring(6);
             if (payload === '[DONE]') continue;
             try { var data = JSON.parse(payload); if (data.content) fullContent += data.content; } catch (e) {}
           }
         }
         renderThinking(asstDiv, fullContent); chatContainer.scrollTop = chatContainer.scrollHeight;
-        return; // Termina la ejecución aquí para navegadores viejos
+        return;
       });
     }
 
-    // ✅ NAVEGADORES MODERNOS: Streaming nativo
+    // NAVEGADORES MODERNOS: Streaming nativo
     var reader = response.body.getReader(); var decoder = new TextDecoder(); var buffer = '';
     function readChunk() {
       return reader.read().then(function(chunk) {
@@ -488,21 +751,24 @@ function continueSendMessage(text) {
         var lines = buffer.split('\n'); buffer = lines.pop();
         for (var i = 0; i < lines.length; i++) {
           var line = lines[i];
-          if (line.startsWith('data: ')) {
+          if (line.indexOf('data: ') === 0) {
             var payload = line.substring(6);
             if (payload === '[DONE]') continue;
             try { var data = JSON.parse(payload); if (data.content) { fullContent += data.content; renderThinking(asstDiv, fullContent); chatContainer.scrollTop = chatContainer.scrollHeight; } } catch (e) {}
           }
         }
-        return readChunk(); // Bucle de promesas
+        return readChunk();
       });
     }
     return readChunk();
   })
   .then(function() {
-    // Finalizado (ambos casos)
-    if (fullContent) messages.push({ role: 'assistant', content: fullContent });
+    if (fullContent) {
+      var nowAsst = timeStr();
+      messages.push({ role: 'assistant', content: fullContent, timestamp: nowAsst });
+    }
     sendBtn.disabled = false; isStreaming = false; userInput.focus();
+    scheduleSave();
   })
   .catch(function(err) {
     asstDiv.className = 'message error'; asstDiv.innerHTML = 'Error: ' + esc(err.message);
@@ -516,4 +782,74 @@ sendBtn.addEventListener('click', sendMessage);
 userInput.addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
 window.addEventListener('resize', function() { if (!isMobile()) { sidebar.classList.remove('open'); sidebarOverlay.style.display = 'none'; sidebarOverlay.classList.remove('visible'); sidebar.classList.toggle('collapsed', !sidebarOpen); updateToggleIcon(); } else sidebar.classList.remove('collapsed'); });
 
-loadHistory(); loadUserInfo(); userInput.focus();
+/* ═══════════════════════════════════════
+   BOTONES SIDEBAR
+   ═══════════════════════════════════════ */
+
+// Nueva conversacion
+var btnNewChat = document.getElementById('btnNewChat');
+if (btnNewChat) {
+  btnNewChat.addEventListener('click', function() {
+    nuevaConversacion();
+  });
+}
+
+// Logo → nueva conversacion
+var sidebarLogoIcon = document.getElementById('sidebarLogoIcon');
+if (sidebarLogoIcon) {
+  sidebarLogoIcon.addEventListener('click', function() {
+    nuevaConversacion();
+  });
+}
+
+/* ═══════════════════════════════════════
+   GUARDAR AL SALIR DE LA PAGINA
+   ═══════════════════════════════════════ */
+window.addEventListener('beforeunload', function() {
+  if (messages.length === 0) return;
+
+  var userId = getUserId();
+  if (!userId) return;
+
+  var mensajesParaGuardar = [];
+  for (var i = 0; i < messages.length; i++) {
+    var msg = { role: messages[i].role, content: messages[i].content };
+    if (messages[i].displayText) msg.displayText = messages[i].displayText;
+    if (messages[i].timestamp) msg.timestamp = messages[i].timestamp;
+    mensajesParaGuardar.push(msg);
+  }
+
+  var body = { idUsuario: userId, mensajes: mensajesParaGuardar };
+
+  // Firefox 43 compatible: sync XHR en beforeunload
+  try {
+    if (currentConvId) {
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/conversaciones/' + currentConvId + '/guardar', false);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.send(JSON.stringify(body));
+    } else {
+      // Crear conversacion primero
+      var xhr1 = new XMLHttpRequest();
+      xhr1.open('POST', '/api/conversaciones/crear', false);
+      xhr1.setRequestHeader('Content-Type', 'application/json');
+      xhr1.send(JSON.stringify({ idUsuario: userId }));
+      if (xhr1.status === 201) {
+        try {
+          var r = JSON.parse(xhr1.responseText);
+          if (r.exitoso && r.id) {
+            var xhr2 = new XMLHttpRequest();
+            xhr2.open('POST', '/api/conversaciones/' + r.id + '/guardar', false);
+            xhr2.setRequestHeader('Content-Type', 'application/json');
+            xhr2.send(JSON.stringify(body));
+          }
+        } catch (e) {}
+      }
+    }
+  } catch (e) {}
+});
+
+// ── Inicializar ──
+loadHistory();
+loadUserInfo();
+userInput.focus();

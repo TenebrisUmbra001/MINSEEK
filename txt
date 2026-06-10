@@ -1,0 +1,9 @@
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+
+
+# Linux/Mac:
+ENCRYPTION_KEY=a3f8b2c1... node ApiPrivada.js
+
+# Windows CMD:
+set ENCRYPTION_KEY=a3f8b2c1... && node ApiPrivada.js

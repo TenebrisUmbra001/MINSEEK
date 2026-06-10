@@ -275,3 +275,84 @@ body {
 
 #passwordMatchHint.match { color: rgba(46, 204, 113, .7); }
 #passwordMatchHint.no-match { color: rgba(255, 120, 120, .8); }
+
+/* ── Conversaciones en sidebar ── */
+.conv-group-label {
+  padding: 8px 16px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary, #888);
+  user-select: none;
+}
+
+.conv-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  margin: 2px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+  gap: 8px;
+}
+
+.conv-item:hover {
+  background: var(--sidebar-hover, rgba(255,255,255,0.08));
+}
+
+.conv-item.active {
+  background: var(--sidebar-active, rgba(255,255,255,0.12));
+}
+
+.conv-title {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-primary, #e0e0e0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conv-item.active .conv-title {
+  color: var(--accent, #7c6aef);
+  font-weight: 500;
+}
+
+.conv-delete {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #888);
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.conv-delete svg {
+  width: 14px;
+  height: 14px;
+}
+
+.conv-item:hover .conv-delete {
+  display: flex;
+}
+
+.conv-delete:hover {
+  background: rgba(255, 80, 80, 0.15);
+  color: #ff5050;
+}
+
+.conv-empty {
+  padding: 20px 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+}

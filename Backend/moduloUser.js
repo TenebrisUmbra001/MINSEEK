@@ -826,7 +826,10 @@ function obtenerTodosLosUsuarios() {
  */
 function eliminarUsuario(idUsuario) {
   try {
-    // También eliminar historial y códigos por integridad (CASCADE si está configurado, sino manual)
+
+    // AÑADIR esta línea:
+    db.prepare('DELETE FROM Conversacion WHERE idUsuario = ?').run(idUsuario);
+        // También eliminar historial y códigos por integridad (CASCADE si está configurado, sino manual)
     db.prepare('DELETE FROM HistorialConexion WHERE idUsuario = ?').run(idUsuario);
     db.prepare('DELETE FROM CodigosValidacion WHERE idUsuario = ?').run(idUsuario);
 
