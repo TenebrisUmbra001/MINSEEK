@@ -207,9 +207,9 @@ async function registrarUsuario(usuario, correo, contrasena) {
       };
     }
 
-    // Verificar si el usuario ya existe (prepared statement)
+    // ✅ CAMBIO: COLLATE NOCASE para evitar duplicados por mayúsculas/minúsculas
     const usuarioExistente = db.prepare(
-      'SELECT id FROM Usuario WHERE NombreUsuario = ? OR Correo = ? LIMIT 1'
+      'SELECT id FROM Usuario WHERE NombreUsuario = ? COLLATE NOCASE OR Correo = ? COLLATE NOCASE LIMIT 1'
     ).get(usuario.trim(), validEmail.correo);
 
     if (usuarioExistente) {
@@ -279,8 +279,9 @@ async function autenticarUsuario(usuario, contrasena, datosConexion = {}) {
       };
     }
 
+    // ✅ CAMBIO: COLLATE NOCASE para que el login sea insensible a mayúsculas/minúsculas
     const usuarioEnBD = db.prepare(
-      'SELECT id, NombreUsuario, Correo, Password, NombreVisible, FotoPerfilPath FROM Usuario WHERE NombreUsuario = ? LIMIT 1'
+      'SELECT id, NombreUsuario, Correo, Password, NombreVisible, FotoPerfilPath FROM Usuario WHERE NombreUsuario = ? COLLATE NOCASE LIMIT 1'
     ).get(usuario.trim());
 
     if (!usuarioEnBD) {
@@ -630,9 +631,9 @@ function limpiarCodigosExpirados() {
 
 function registrarIntentoFallido(usuario, datosConexion = {}) {
   try {
-    // Buscar el usuario
+    // ✅ CAMBIO: COLLATE NOCASE para buscar el usuario sin importar mayúsculas/minúsculas
     const usuarioEnBD = db.prepare(
-      'SELECT id FROM Usuario WHERE NombreUsuario = ? LIMIT 1'
+      'SELECT id FROM Usuario WHERE NombreUsuario = ? COLLATE NOCASE LIMIT 1'
     ).get(usuario.trim());
 
     if (!usuarioEnBD) {

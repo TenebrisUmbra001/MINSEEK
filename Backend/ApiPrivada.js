@@ -1,4 +1,3 @@
-// Backend/ApiPrivada.js
 const express = require('express');
 const crypto = require('crypto');
 const path = require('path');
@@ -6,8 +5,6 @@ const fs = require('fs');
 const multer = require('multer');
 const mammoth = require('mammoth');
 
-// ❌ ELIMINADO: const pdfParse = require('pdf-parse');
-// ✅ NUEVO: Importar tu módulo custom que evita el bug y usa renderPage
 const { extraerTextoPDF } = require('./pdfHandler');
 
 const app = express();
@@ -44,30 +41,16 @@ const log = modelManager.log;
 const { enviarCodigoVerificacion, enviarCodigoRecuperacion } = require('./emailService');
 
 // ============================================================================
-// CORS — DEBE SER LO PRIMERO, ANTES QUE CUALQUIER OTRA COSA
-// Firefox bloquea si los headers CORS no están en el orden correcto
-// y si no aparecen TAMBIÉN en respuestas de error (401, 404, 500)
+// CORS
 // ============================================================================
 app.use((req, res, next) => {
-  // 1️⃣ Origen permitido — NUNCA * con credentials
   res.setHeader('Access-Control-Allow-Origin', 'http://localhost:2054');
-  
-  // 2️⃣ Métodos permitidos
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  
-  // 3️⃣ Headers permitidos en la petición
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-  
-  // 4️⃣ Permitir credenciales (cookies, auth headers)
   res.setHeader('Access-Control-Allow-Credentials', 'true');
-  
-  // 5️⃣ Cache de preflight (Firefox exige esto para no re-preflightear cada 5 min)
   res.setHeader('Access-Control-Max-Age', '86400');
-  
-  // 6️⃣ Headers expuestos al frontend (para leer X-Model-Source, etc.)
   res.setHeader('Access-Control-Expose-Headers', 'X-Model-Source, X-Request-Id');
 
-  // ✅ Responder preflight INMEDIATAMENTE sin pasar por más middleware
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
   }
@@ -79,6 +62,50 @@ app.use((req, res, next) => {
 // MIDDLEWARES Y DIRECTORIOS
 // ============================================================================
 app.use(express.json());
+
+const db = require('./data/db');
+const moduloUser = require('./moduloUser');
+
+// ============================================================================
+// MIDDLEWARE — Actualizar actividad del usuario en CADA petición autenticada
+// ============================================================================
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS' || req.path === '/health' || req.path === '/api/status') {
+    return next();
+  }
+
+  var idUsuario = null;
+
+  if (req.body && req.body.idUsuario) {
+    idUsuario = req.body.idUsuario;
+  }
+  if (!idUsuario && req.query && req.query.idUsuario) {
+    idUsuario = req.query.idUsuario;
+  }
+  if (!idUsuario && req.params && req.params.idUsuario) {
+    idUsuario = req.params.idUsuario;
+  }
+
+  if (idUsuario && typeof idUsuario === 'string' && idUsuario.length > 5) {
+    try {
+      moduloUser.actualizarActividad(idUsuario);
+    } catch (e) {}
+  }
+
+  next();
+});
+
+function sha256(buffer) {
+  return crypto.createHash('sha256').update(buffer).digest('hex');
+}
+
+function truncarTextoInteligente(texto, maxChars) {
+  if (!texto || texto.length <= maxChars) return texto;
+  var mitad = Math.floor(maxChars / 2);
+  var inicio = texto.substring(0, mitad);
+  var final = texto.substring(texto.length - mitad);
+  return inicio + '\n\n[... DOCUMENTO TRUNCADO POR EXCEDER EL LÍMITE DE MEMORIA DEL SISTEMA. Se muestra el inicio y el final ...]\n\n' + final;
+}
 
 const allowedExtensions = ['.pdf', '.doc', '.docx', '.txt', '.md', '.csv', '.json', '.xml', '.html', '.htm', '.rtf', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'];
 const docsDir = path.join(__dirname, 'storage', 'docs');
@@ -124,28 +151,12 @@ const uploadUserPhoto = multer({
   }
 });
 
-const db = require('./data/db');
-const moduloUser = require('./moduloUser');
-
-function sha256(buffer) {
-  return crypto.createHash('sha256').update(buffer).digest('hex');
-}
-
-function truncarTextoInteligente(texto, maxChars) {
-  if (!texto || texto.length <= maxChars) return texto;
-  var mitad = Math.floor(maxChars / 2);
-  var inicio = texto.substring(0, mitad);
-  var final = texto.substring(texto.length - mitad);
-  return inicio + '\n\n[... DOCUMENTO TRUNCADO POR EXCEDER EL LÍMITE DE MEMORIA DEL SISTEMA. Se muestra el inicio y el final ...]\n\n' + final;
-}
-
 // ============================================================================
 // ENDPOINTS BÁSICOS
 // ============================================================================
 
 app.get('/health', (req, res) => res.status(200).json({ status: 'OK' }));
 
-// Estado del sistema de modelos en tiempo real
 app.get('/api/status', (req, res) => {
   res.json({ ok: true, ...obtenerEstado() });
 });
@@ -170,7 +181,7 @@ app.post('/api/private/execute', async (req, res) => {
 });
 
 // ============================================================================
-// RUTA /chat — STREAMING CORREGIDO
+// RUTA /chat — STREAMING CON VALIDACIÓN DE SESIÓN
 // ============================================================================
 app.post('/chat', async (req, res) => {
   let modeloEnUso = null;
@@ -179,6 +190,18 @@ app.post('/chat', async (req, res) => {
   try {
     const { messages } = req.body;
     if (!messages) return res.status(400).json({ error: 'Inválido' });
+
+    // Verificar si el usuario sigue conectado antes de procesar
+    var idUsuarioChat = req.body.idUsuario;
+    if (idUsuarioChat) {
+      var usuarioCheck = db.prepare('SELECT EstaConectado FROM Usuario WHERE id = ?').get(idUsuarioChat);
+      if (!usuarioCheck || !usuarioCheck.EstaConectado) {
+        return res.status(401).json({ 
+          error: 'Sesión expirada por inactividad', 
+          codigo: 'SESION_EXPIRADA' 
+        });
+      }
+    }
 
     const ultimoMensaje = messages.filter(m => m.role === 'user').pop();
     const prompt = ultimoMensaje ? ultimoMensaje.content : '';
@@ -263,7 +286,7 @@ app.post('/chat', async (req, res) => {
                     if (content) {
                       res.write(`data: ${JSON.stringify({ content })}\n\n`);
                     }
-                  } catch (e) { /* ignore parse errors */ }
+                  } catch (e) {}
                 }
               }
             }
@@ -329,7 +352,7 @@ app.post('/chat', async (req, res) => {
                 res.write(`data: ${JSON.stringify({ content: chunk.message.content })}\n\n`);
               }
               if (chunk.done) res.write('data: [DONE]\n\n');
-            } catch (e) { /* ignore parse errors */ }
+            } catch (e) {}
           }
         }
 
@@ -590,43 +613,6 @@ app.post('/auth/admin/eliminar-usuario', (req, res) => {
 });
 
 // ============================================================================
-// HEARTBEAT - El frontend envía un ping cada 5 min para mantener la sesión activa
-// ============================================================================
-app.post('/auth/heartbeat', (req, res) => {
-  try {
-    const { idUsuario } = req.body;
-    if (!idUsuario) {
-      return res.status(400).json({ exitoso: false, error: 'idUsuario requerido' });
-    }
-
-    const usuario = db.prepare('SELECT id, EstaConectado FROM Usuario WHERE id = ?').get(idUsuario);
-    if (!usuario) {
-      return res.status(404).json({ exitoso: false, error: 'Usuario no encontrado', sesionActiva: false });
-    }
-
-    if (!usuario.EstaConectado) {
-      return res.status(401).json({ 
-        exitoso: false, 
-        error: 'Sesión expirada por inactividad', 
-        sesionActiva: false,
-        codigo: 'SESION_EXPIRADA'
-      });
-    }
-
-    const actualizado = moduloUser.actualizarActividad(idUsuario);
-    
-    return res.status(200).json({ 
-      exitoso: true, 
-      activo: actualizado,
-      sesionActiva: true
-    });
-  } catch (error) {
-    log.error('❌ Error en /auth/heartbeat:', error.message);
-    return res.status(500).json({ exitoso: false, error: 'Error del servidor' });
-  }
-});
-
-// ============================================================================
 // RUTAS DE DOCUMENTOS
 // ============================================================================
 
@@ -652,7 +638,6 @@ app.post('/api/private/upload', uploadDocs.array('archivos', 10), async function
         var contenidoExtraido = '';
         try {
           if (ext === '.docx') { contenidoExtraido = (await mammoth.extractRawText({ path: file.path })).value || ''; }
-          // ✅ FIX: Usar pdfHandler en lugar de pdf-parse directamente
           else if (ext === '.pdf') {
             const pdfResult = await extraerTextoPDF(buffer, file.originalname);
             contenidoExtraido = pdfResult.text || '';
@@ -780,7 +765,7 @@ app.post('/auth/recuperar-password', async (req, res) => {
     }
 
     const codigo = String(Math.floor(100000 + Math.random() * 900000));
-    const expiry = Date.now() + 10 * 60 * 1000; 
+    const expiry = Date.now() + 10 * 60 * 1000;
 
     recoveryCodes.set(usuario.id, { codigo, expiry, intentos: 0 });
 
@@ -863,10 +848,12 @@ app.post('/auth/restablecer-password', async (req, res) => {
 // INTERVALOS DE LIMPIEZA Y MANTENIMIENTO
 // ============================================================================
 
+// Cada 1 hora: comprobar usuarios con más de 45 min de inactividad real
 setInterval(() => {
   moduloUser.desconectarUsuariosInactivos(45);
-}, 5 * 60 * 1000);
+}, 60 * 60 * 1000); // 1 HORA
 
+// Limpieza inicial 10 segundos después de arrancar
 setTimeout(() => {
   moduloUser.desconectarUsuariosInactivos(45);
 }, 10000);
@@ -960,11 +947,8 @@ app.post('/auth/conversacion/:id/eliminar', function (req, res) {
   }
 });
 
-
-
-
 // ============================================================================
-// ERROR HANDLER — Debe conservar headers CORS en respuestas de error
+// ERROR HANDLER
 // ============================================================================
 app.use((err, req, res, next) => {
   if (!res.get('Access-Control-Allow-Origin')) {

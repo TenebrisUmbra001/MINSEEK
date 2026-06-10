@@ -1,4 +1,3 @@
-// server.js
 const express = require('express');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
@@ -14,7 +13,6 @@ const PRIVATE_API_TOKEN = process.env.PRIVATE_API_TOKEN || '';
 
 // ============================================================================
 // CORS — PRIMERO QUE TODO
-// Firefox exige headers CORS en ORDEN y en TODAS las respuestas (incluso errores)
 // ============================================================================
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -62,7 +60,7 @@ async function forwardGetToPrivate(path, options = {}) {
 }
 
 // ============================================================================
-// RUTAS DE AUTENTICACIÓN (Puente Frontend → API Privada)
+// RUTAS DE AUTENTICACIÓN
 // ============================================================================
 
 app.post('/api/registro', authLimiter, async (req, res) => {
@@ -213,20 +211,6 @@ app.get('/api/historial/:idUsuario', async (req, res) => {
 });
 
 // ============================================================================
-// HEARTBEAT - Mantener sesión activa
-// ============================================================================
-app.post('/api/heartbeat', async (req, res) => {
-  try {
-    const { idUsuario } = req.body;
-    if (!idUsuario) return res.status(400).json({ exitoso: false, error: 'idUsuario requerido' });
-    const result = await forwardToPrivate('/auth/heartbeat', { idUsuario });
-    return res.status(result.status).json(result.body);
-  } catch (error) {
-    return res.status(502).json({ exitoso: false, error: 'Error del servidor' });
-  }
-});
-
-// ============================================================================
 // RUTAS DE CHAT Y EJECUCIÓN
 // ============================================================================
 
@@ -247,7 +231,13 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
       headers: { 'Content-Type': 'application/json', ...(PRIVATE_API_TOKEN ? { 'Authorization': `Bearer ${PRIVATE_API_TOKEN}` } : {}) },
       body: JSON.stringify(req.body)
     });
-    if (!response.ok) return res.status(response.status).json({ error: 'Error API Privada' });
+    if (!response.ok) {
+      // Pasar el código de sesión expirada al frontend
+      if (response.status === 401) {
+        return res.status(401).json({ error: 'Sesión expirada por inactividad', codigo: 'SESION_EXPIRADA' });
+      }
+      return res.status(response.status).json({ error: 'Error API Privada' });
+    }
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -269,7 +259,6 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
     return res.status(502).json({ error: 'Error' });
   }
 });
-
 
 // ============================================================================
 // RUTAS - SUBIDA MÚLTIPLE
@@ -334,7 +323,7 @@ app.post('/api/admin/eliminar-usuario', async (req, res) => {
 });
 
 // ============================================================================
-// RECUPERACIÓN DE CONTRASEÑA (Proxy → API Privada)
+// RECUPERACIÓN DE CONTRASEÑA
 // ============================================================================
 
 app.post('/api/recuperar-password', authLimiter, async (req, res) => {
@@ -411,9 +400,8 @@ app.post('/api/conversacion/:id/eliminar', function (req, res) {
     .catch(function () { return res.status(502).json({ exitoso: false, error: 'Error servidor' }); });
 });
 
-
 // ============================================================================
-// ERROR HANDLER — Conservar CORS en errores
+// ERROR HANDLER
 // ============================================================================
 app.use((err, req, res, next) => {
   if (!res.get('Access-Control-Allow-Origin')) {

@@ -6,62 +6,8 @@
     window.location.replace('/');
     return;
   }
-  iniciarHeartbeat(idUsuario);
+  // El servidor controla la inactividad cada hora
 })();
-
-// ============================================================================
-// SISTEMA DE INACTIVIDAD
-// ============================================================================
-var heartbeatInterval = null;
-var idUsuarioActual = null;
-
-function iniciarHeartbeat(idUsuario) {
-  detenerHeartbeat();
-  idUsuarioActual = idUsuario;
-
-  heartbeatInterval = setInterval(function() {
-    fetch('/api/heartbeat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify({ idUsuario: idUsuarioActual })
-    })
-    .then(function(response) { return response.json(); })
-    .then(function(data) {
-      if (!data.sesionActiva || data.codigo === 'SESION_EXPIRADA') {
-        detenerHeartbeat();
-        cerrarSesionPorInactividad();
-      }
-      if (!data.exitoso && (response.status === 401 || response.status === 404)) {
-        detenerHeartbeat();
-        cerrarSesionPorInactividad();
-      }
-    })
-    .catch(function(e) {
-      console.warn('⚠️ Heartbeat error de red:', e.message);
-    });
-  }, 5 * 60 * 1000);
-
-  fetch('/api/heartbeat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'same-origin',
-    body: JSON.stringify({ idUsuario: idUsuarioActual })
-  }).catch(function() {});
-}
-
-function detenerHeartbeat() {
-  if (heartbeatInterval) {
-    clearInterval(heartbeatInterval);
-    heartbeatInterval = null;
-  }
-}
-
-function cerrarSesionPorInactividad() {
-  sessionStorage.clear();
-  alert('Tu sesión ha expirado por inactividad (más de 45 minutos sin actividad).');
-  window.location.replace('/');
-}
 
 // ============================================================================
 // DOM & VARIABLES
@@ -375,7 +321,7 @@ settingsForm.addEventListener('submit', function (e) {
 });
 
 function logout() {
-  detenerHeartbeat(); optionsDropdown.classList.remove('open');
+  optionsDropdown.classList.remove('open');
   var overlay = document.createElement('div'); overlay.className = 'logout-overlay';
   overlay.innerHTML = '<div class="logout-box"><p>Desconectando...</p><div class="spinner"></div></div>';
   document.body.appendChild(overlay);
@@ -713,19 +659,25 @@ function continueSendMessage(text) {
     currentDocContexts = [];
   }
 
-  // Guardar con displayText para separar texto visible del contexto de docs
   messages.push({ role: 'user', content: promptForAPI, displayText: text, timestamp: now });
   userInput.value = ''; sendBtn.disabled = true; isStreaming = true;
   var asstDiv = document.createElement('div'); asstDiv.className = 'message assistant'; asstDiv.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
   chatContainer.appendChild(asstDiv); chatContainer.scrollTop = chatContainer.scrollHeight; var fullContent = '';
 
-  var body = { messages: messages }; if (currentConvId) body.conversation_id = currentConvId;
+  var body = { messages: messages, idUsuario: getUserId() }; if (currentConvId) body.conversation_id = currentConvId;
 
   fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   .then(function(response) {
-    if (!response.ok) throw new Error('Error servidor');
+    if (!response.ok) {
+      if (response.status === 401) {
+        sessionStorage.clear();
+        alert('Tu sesión ha expirado por inactividad (más de 45 minutos sin actividad).');
+        window.location.replace('/');
+        return;
+      }
+      throw new Error('Error servidor');
+    }
 
-    // FIREFOX 43 FALLBACK: Si el navegador no soporta ReadableStream
     if (!response.body || !response.body.getReader) {
       return response.text().then(function(text) {
         var lines = text.split('\n');
@@ -742,7 +694,6 @@ function continueSendMessage(text) {
       });
     }
 
-    // NAVEGADORES MODERNOS: Streaming nativo
     var reader = response.body.getReader(); var decoder = new TextDecoder(); var buffer = '';
     function readChunk() {
       return reader.read().then(function(chunk) {
@@ -771,6 +722,7 @@ function continueSendMessage(text) {
     scheduleSave();
   })
   .catch(function(err) {
+    if (!sessionStorage.getItem('idUsuario')) return;
     asstDiv.className = 'message error'; asstDiv.innerHTML = 'Error: ' + esc(err.message);
     sendBtn.disabled = false; isStreaming = false; userInput.focus();
   });
@@ -786,7 +738,6 @@ window.addEventListener('resize', function() { if (!isMobile()) { sidebar.classL
    BOTONES SIDEBAR
    ═══════════════════════════════════════ */
 
-// Nueva conversacion
 var btnNewChat = document.getElementById('btnNewChat');
 if (btnNewChat) {
   btnNewChat.addEventListener('click', function() {
@@ -794,7 +745,6 @@ if (btnNewChat) {
   });
 }
 
-// Logo → nueva conversacion
 var sidebarLogoIcon = document.getElementById('sidebarLogoIcon');
 if (sidebarLogoIcon) {
   sidebarLogoIcon.addEventListener('click', function() {
@@ -821,7 +771,6 @@ window.addEventListener('beforeunload', function() {
 
   var body = { idUsuario: userId, mensajes: mensajesParaGuardar };
 
-  // Firefox 43 compatible: sync XHR en beforeunload
   try {
     if (currentConvId) {
       var xhr = new XMLHttpRequest();
@@ -829,7 +778,6 @@ window.addEventListener('beforeunload', function() {
       xhr.setRequestHeader('Content-Type', 'application/json');
       xhr.send(JSON.stringify(body));
     } else {
-      // Crear conversacion primero
       var xhr1 = new XMLHttpRequest();
       xhr1.open('POST', '/api/conversaciones/crear', false);
       xhr1.setRequestHeader('Content-Type', 'application/json');
